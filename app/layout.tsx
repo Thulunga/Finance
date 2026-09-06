@@ -43,7 +43,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         suppressHydrationWarning
       >
         <Providers>
-          <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,theme(colors.emerald.100/0.65),transparent_34%),linear-gradient(180deg,theme(colors.background),theme(colors.muted/0.35))] dark:bg-[radial-gradient(circle_at_top_left,theme(colors.emerald.950/0.45),transparent_32%),linear-gradient(180deg,theme(colors.background),theme(colors.muted/0.18))]">
+          <div className="flex min-h-screen flex-col bg-[radial-gradient(circle_at_top_left,theme(colors.emerald.100/0.65),transparent_34%),linear-gradient(180deg,theme(colors.background),theme(colors.muted/0.35))] dark:bg-[radial-gradient(circle_at_top_left,theme(colors.emerald.950/0.45),transparent_32%),linear-gradient(180deg,theme(colors.background),theme(colors.muted/0.18))]">
           <header className="sticky top-0 z-50 border-b bg-background/85 backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
             <nav className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-3 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
               <div className="flex min-w-0 items-center gap-3">

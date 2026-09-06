@@ -121,6 +121,14 @@
 }
 
 @layer base {
+  body:has(.auth-page) > div > main {
+    display: flex;
+    flex: 1;
+    max-width: none;
+    width: 100%;
+    padding: 0;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }

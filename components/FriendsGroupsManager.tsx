@@ -1,7 +1,8 @@
 "use client";
 
 import { startTransition, useState } from "react";
-import { Check, Copy, LoaderCircle, Plus, UserPlus, Users } from "lucide-react";
+import Link from "next/link";
+import { ArrowRight, Check, Copy, LoaderCircle, Plus, UserPlus, Users } from "lucide-react";
 import { toast } from "sonner";
 
 import { createGroupInvite } from "@/app/actions/groupActions";
@@ -155,25 +156,39 @@ export function FriendsGroupsManager() {
               {groups.map((group) => (
                 <div key={group.group_id} className="rounded-lg border p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
                       <Users className="size-4 text-violet-600 dark:text-violet-400" aria-hidden="true" />
-                      <p className="font-medium">{group.group_name}</p>
+                      <Link
+                        className="truncate font-medium underline-offset-4 hover:underline"
+                        href={`/groups/${group.group_id}`}
+                      >
+                        {group.group_name}
+                      </Link>
                       <Badge variant="secondary">{group.member_count} {group.member_count === 1 ? "member" : "members"}</Badge>
                     </div>
-                    <Button
-                      disabled={invitingGroupId === group.group_id}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                      onClick={() => handleCopyInvite(group.group_id)}
-                    >
-                      {invitingGroupId === group.group_id ? (
-                        <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
-                      ) : (
-                        <Copy className="size-4" aria-hidden="true" />
-                      )}
-                      Copy invite link
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-sm font-medium transition-colors hover:bg-muted"
+                        href={`/groups/${group.group_id}`}
+                      >
+                        View details
+                        <ArrowRight className="size-4" aria-hidden="true" />
+                      </Link>
+                      <Button
+                        disabled={invitingGroupId === group.group_id}
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                        onClick={() => handleCopyInvite(group.group_id)}
+                      >
+                        {invitingGroupId === group.group_id ? (
+                          <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+                        ) : (
+                          <Copy className="size-4" aria-hidden="true" />
+                        )}
+                        Copy invite link
+                      </Button>
+                    </div>
                   </div>
 
                   <div className="mt-3 flex gap-2">

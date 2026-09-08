@@ -30,6 +30,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 
 const FALLBACK_CATEGORIES = [
   "Rent & Utilities",
@@ -39,11 +40,14 @@ const FALLBACK_CATEGORIES = [
   "Discretionary",
 ];
 
+type SplitMode = "equal" | "amount" | "percentage";
+
 type FriendSplit = {
   id: string;
   friend_name: string;
   friend_user_id: string | null;
   amount_owed: number;
+  percent: number;
 };
 
 function getToday() {
@@ -64,6 +68,7 @@ function createSplitRow(): FriendSplit {
     friend_name: "",
     friend_user_id: null,
     amount_owed: 0,
+    percent: 0,
   };
 }
 
@@ -126,10 +131,46 @@ function FriendPicker({
   );
 }
 
+function GroupPicker({
+  groups,
+  value,
+  disabled,
+  onSelect,
+}: Readonly<{
+  groups: { group_id: string; group_name: string }[];
+  value: string;
+  disabled?: boolean;
+  onSelect: (groupId: string) => void;
+}>) {
+  if (groups.length === 0) return null;
+
+  return (
+    <label className="block space-y-1.5 text-sm font-medium">
+      Group (optional)
+      <Select
+        disabled={disabled}
+        value={value}
+        onValueChange={(nextGroupId) => onSelect(nextGroupId ?? "")}
+      >
+        <SelectTrigger className="w-full sm:w-72">
+          <SelectValue placeholder="Choose a group" />
+        </SelectTrigger>
+        <SelectContent>
+          {groups.map((group) => (
+            <SelectItem key={group.group_id} value={group.group_id}>
+              {group.group_name}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+
 export function ExpenseForm({
   onCompleted,
 }: Readonly<{ onCompleted?: () => void }>) {
-  const { categories, addExpense } = useDashboard();
+  const { categories, groups, addExpense } = useDashboard();
   const categoryOptions = categories.length > 0 ? categories : FALLBACK_CATEGORIES;
   const [date, setDate] = useState(getToday());
   const [description, setDescription] = useState("");
@@ -138,19 +179,59 @@ export function ExpenseForm({
   const [isCreditCard, setIsCreditCard] = useState(false);
   const [isCreditCardPayment, setIsCreditCardPayment] = useState(false);
   const [isShared, setIsShared] = useState(false);
+  const [splitMode, setSplitMode] = useState<SplitMode>("equal");
+  const [groupId, setGroupId] = useState("");
   const [splits, setSplits] = useState<FriendSplit[]>([createSplitRow()]);
   const [isCommitting, setIsCommitting] = useState(false);
   const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
 
+  /** Each friend's effective owed amount, derived from the active split method. */
+  const computedSplits = useMemo(() => {
+    if (!isShared) {
+      return [] as { id: string; friend_name: string; friend_user_id: string | null; amount: number }[];
+    }
+
+    const count = splits.length;
+
+    return splits.map((split) => {
+      let amount = 0;
+      if (splitMode === "equal") {
+        amount = count > 0 ? Math.floor((totalAmount * 100) / (count + 1)) / 100 : 0;
+      } else if (splitMode === "percentage") {
+        amount = Math.round(totalAmount * (split.percent || 0)) / 100;
+      } else {
+        amount = split.amount_owed || 0;
+      }
+
+      return {
+        id: split.id,
+        friend_name: split.friend_name,
+        friend_user_id: split.friend_user_id,
+        amount,
+      };
+    });
+  }, [isShared, splits, splitMode, totalAmount]);
+
   const friendTotal = useMemo(
-    () => splits.reduce((total, split) => total + split.amount_owed, 0),
+    () => computedSplits.reduce((total, split) => total + split.amount, 0),
+    [computedSplits]
+  );
+  const percentTotal = useMemo(
+    () => splits.reduce((total, split) => total + (split.percent || 0), 0),
     [splits]
   );
   const myShare = Math.max(totalAmount - (isShared ? friendTotal : 0), 0);
-  const splitExceedsTotal = isShared && friendTotal > totalAmount;
+  const splitExceedsTotal = isShared && friendTotal > totalAmount + 0.001;
+  const percentExceeds = isShared && splitMode === "percentage" && percentTotal > 100.001;
+  const hasIncompleteRow = isShared && splits.some((split) => !split.friend_name.trim());
   const canSubmit =
     Boolean(date && description.trim() && category && totalAmount > 0) &&
-    !splitExceedsTotal &&
+    (!isShared ||
+      (splits.length > 0 &&
+        !hasIncompleteRow &&
+        !splitExceedsTotal &&
+        !percentExceeds &&
+        friendTotal > 0)) &&
     !isCommitting;
 
   function updateSplit(id: string, nextSplit: Partial<FriendSplit>) {
@@ -162,20 +243,6 @@ export function ExpenseForm({
     );
   }
 
-  function splitEqually() {
-    if (splits.length === 0 || totalAmount <= 0) {
-      return;
-    }
-
-    const peopleCount = splits.length + 1;
-    const friendShare = Math.floor((totalAmount * 100) / peopleCount) / 100;
-
-    setStatus("idle");
-    setSplits((current) =>
-      current.map((split) => ({ ...split, amount_owed: friendShare }))
-    );
-  }
-
   function resetForm() {
     setDate(getToday());
     setDescription("");
@@ -184,6 +251,8 @@ export function ExpenseForm({
     setIsCreditCard(false);
     setIsCreditCardPayment(false);
     setIsShared(false);
+    setSplitMode("equal");
+    setGroupId("");
     setSplits([createSplitRow()]);
   }
 
@@ -207,11 +276,14 @@ export function ExpenseForm({
           is_shared: isShared,
           my_share: isShared ? myShare : totalAmount,
           splits: isShared
-            ? splits.map((split) => ({
-                friend_name: split.friend_name,
-                amount_owed: split.amount_owed,
-                friend_user_id: split.friend_user_id,
-              }))
+            ? computedSplits
+                .filter((split) => split.friend_name.trim() && split.amount > 0)
+                .map((split) => ({
+                  friend_name: split.friend_name,
+                  amount_owed: split.amount,
+                  friend_user_id: split.friend_user_id,
+                  group_id: groupId || null,
+                }))
             : undefined,
         });
 
@@ -353,62 +425,109 @@ export function ExpenseForm({
 
           {isShared ? (
             <div className="mt-4 space-y-3">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <p className="font-mono text-xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
-                  My Net Share: {formatCurrency(myShare)}
-                </p>
-                <Button
-                  disabled={isCommitting || totalAmount <= 0 || splits.length === 0}
-                  type="button"
-                  variant="secondary"
-                  onClick={splitEqually}
-                >
-                  Split Equally
-                </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Split method</span>
+                <div className="inline-flex rounded-lg border p-0.5">
+                  {(["equal", "amount", "percentage"] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      disabled={isCommitting}
+                      onClick={() => {
+                        setStatus("idle");
+                        setSplitMode(mode);
+                      }}
+                      className={cn(
+                        "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                        splitMode === mode
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground hover:text-foreground"
+                      )}
+                    >
+                      {mode === "amount" ? "By amount" : mode === "percentage" ? "By %" : "Equally"}
+                    </button>
+                  ))}
+                </div>
               </div>
 
+              <GroupPicker
+                disabled={isCommitting}
+                groups={groups}
+                value={groupId}
+                onSelect={(nextGroupId) => {
+                  setStatus("idle");
+                  setGroupId(nextGroupId);
+                }}
+              />
+
               <div className="grid gap-2">
-                {splits.map((split) => (
-                  <div
-                    key={split.id}
-                    className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-center"
-                  >
-                    <FriendPicker
-                      disabled={isCommitting}
-                      value={split.friend_name}
-                      onSelect={(name, userId) =>
-                        updateSplit(split.id, { friend_name: name, friend_user_id: userId })
-                      }
-                    />
-                    <Input
-                      className="font-mono tabular-nums"
-                      disabled={isCommitting}
-                      min="0"
-                      step="0.01"
-                      type="number"
-                      value={split.amount_owed || ""}
-                      onChange={(event) =>
-                        updateSplit(split.id, {
-                          amount_owed: Number(event.target.value || 0),
-                        })
-                      }
-                    />
-                    <Button
-                      disabled={isCommitting || splits.length === 1}
-                      size="icon"
-                      type="button"
-                      variant="ghost"
-                      onClick={() =>
-                        setSplits((current) =>
-                          current.filter((item) => item.id !== split.id)
-                        )
-                      }
+                {splits.map((split, index) => {
+                  const amount = computedSplits[index]?.amount ?? 0;
+
+                  return (
+                    <div
+                      key={split.id}
+                      className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-center"
                     >
-                      <Trash2 className="size-4" aria-hidden="true" />
-                      <span className="sr-only">Remove friend split</span>
-                    </Button>
-                  </div>
-                ))}
+                      <FriendPicker
+                        disabled={isCommitting}
+                        value={split.friend_name}
+                        onSelect={(name, userId) =>
+                          updateSplit(split.id, { friend_name: name, friend_user_id: userId })
+                        }
+                      />
+                      {splitMode === "equal" ? (
+                        <div className="flex h-9 items-center justify-end rounded-lg border bg-muted/40 px-3 font-mono text-sm tabular-nums text-muted-foreground sm:h-8">
+                          {formatCurrency(amount)}
+                        </div>
+                      ) : splitMode === "percentage" ? (
+                        <div className="flex items-center gap-1">
+                          <Input
+                            className="font-mono tabular-nums"
+                            disabled={isCommitting}
+                            min="0"
+                            max="100"
+                            step="0.01"
+                            type="number"
+                            value={split.percent || ""}
+                            onChange={(event) =>
+                              updateSplit(split.id, { percent: Number(event.target.value || 0) })
+                            }
+                          />
+                          <span className="text-xs text-muted-foreground">% = {formatCurrency(amount)}</span>
+                        </div>
+                      ) : (
+                        <Input
+                          className="font-mono tabular-nums"
+                          disabled={isCommitting}
+                          min="0"
+                          step="0.01"
+                          type="number"
+                          value={split.amount_owed || ""}
+                          onChange={(event) =>
+                            updateSplit(split.id, {
+                              amount_owed: Number(event.target.value || 0),
+                            })
+                          }
+                        />
+                      )}
+                      <Button
+                        disabled={isCommitting || splits.length === 1}
+                        size="icon"
+                        type="button"
+                        variant="ghost"
+                        onClick={() =>
+                          setSplits((current) =>
+                            current.filter((item) => item.id !== split.id)
+                          )
+                        }
+                      >
+                        <Trash2 className="size-4" aria-hidden="true" />
+                        <span className="sr-only">Remove friend split</span>
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -419,17 +538,29 @@ export function ExpenseForm({
                   onClick={() => setSplits((current) => [...current, createSplitRow()])}
                 >
                   <Plus className="size-4" aria-hidden="true" />
-                  Add Friend
+                  Add friend
                 </Button>
-                {splitExceedsTotal ? (
-                  <Badge variant="destructive">
-                    Friend amounts exceed total
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="font-mono tabular-nums">
-                    Friends owe {formatCurrency(friendTotal)}
-                  </Badge>
-                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  {splitMode === "percentage" ? (
+                    <Badge variant={percentExceeds ? "destructive" : "outline"} className="font-mono tabular-nums">
+                      {percentTotal.toFixed(2)}% of total
+                    </Badge>
+                  ) : null}
+                  {splitExceedsTotal ? (
+                    <Badge variant="destructive">Friend amounts exceed total</Badge>
+                  ) : (
+                    <Badge variant="outline" className="font-mono tabular-nums">
+                      Friends owe {formatCurrency(friendTotal)}
+                    </Badge>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-between rounded-lg border bg-background/60 p-3">
+                <span className="text-sm font-medium">My net share</span>
+                <span className="font-mono text-lg font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+                  {formatCurrency(myShare)}
+                </span>
               </div>
             </div>
           ) : (

@@ -20,6 +20,7 @@ export async function addFriendByCode(userCode: string) {
   }
 
   revalidatePath("/");
+  revalidatePath("/groups");
 }
 
 export async function createExpenseGroup(name: string) {
@@ -57,6 +58,8 @@ export async function addGroupMemberByCode(groupId: string, userCode: string) {
   }
 
   revalidatePath("/");
+  revalidatePath("/groups");
+  revalidatePath(`/groups/${groupId}`);
 }
 
 export async function createGroupInvite(groupId: string) {
@@ -109,6 +112,7 @@ export async function joinGroupViaToken(token: string) {
   }
 
   revalidatePath("/");
+  revalidatePath("/groups");
 
   return data;
 }

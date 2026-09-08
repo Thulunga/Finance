@@ -1,12 +1,12 @@
 import { DashboardShell } from "@/components/DashboardShell";
-import { OverviewView } from "@/components/views/OverviewView";
+import { ExpensesView } from "@/components/views/ExpensesView";
 
 export const dynamic = "force-dynamic";
 
-export default function Home() {
+export default function ExpensesPage() {
   return (
     <DashboardShell>
-      <OverviewView />
+      <ExpensesView />
     </DashboardShell>
   );
 }

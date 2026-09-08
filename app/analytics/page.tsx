@@ -1,25 +1,16 @@
-import { redirect } from "next/navigation";
-
-import { AnalyticsTopBar } from "@/components/AnalyticsTopBar";
-import { DashboardProvider } from "@/components/DashboardProvider";
+import { DashboardShell } from "@/components/DashboardShell";
 import { FinancialAnalytics } from "@/components/FinancialAnalytics";
-import { loadDashboardData } from "@/lib/dashboardData";
+import { PageHeader } from "@/components/PageHeader";
 
 export const dynamic = "force-dynamic";
 
-export default async function AnalyticsPage() {
-  const data = await loadDashboardData();
-
-  if (!data) {
-    redirect("/login");
-  }
-
+export default function AnalyticsPage() {
   return (
-    <DashboardProvider {...data}>
+    <DashboardShell>
       <div className="space-y-4 sm:space-y-6">
-        <AnalyticsTopBar />
+        <PageHeader title="Analytics" description="Category pressure, allocation mix, and monthly trends." />
         <FinancialAnalytics />
       </div>
-    </DashboardProvider>
+    </DashboardShell>
   );
 }

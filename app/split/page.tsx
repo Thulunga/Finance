@@ -1,12 +1,12 @@
 import { DashboardShell } from "@/components/DashboardShell";
-import { OverviewView } from "@/components/views/OverviewView";
+import { SplitView } from "@/components/views/SplitView";
 
 export const dynamic = "force-dynamic";
 
-export default function Home() {
+export default function SplitPage() {
   return (
     <DashboardShell>
-      <OverviewView />
+      <SplitView />
     </DashboardShell>
   );
 }

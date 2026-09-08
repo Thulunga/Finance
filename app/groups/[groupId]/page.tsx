@@ -9,22 +9,18 @@ import { cookies } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
-type GroupExpense = {
-  id: string;
-  expense_id: string | null;
+type GroupExpenseRow = {
+  split_id: string;
+  expense_id: string;
   friend_name: string;
   amount_owed: number;
   is_settled: boolean;
   settled_date: string | null;
-  expenses: {
-    id: string;
-    date: string;
-    description: string;
-    total_amount: number;
-    category: string;
-    my_share: number;
-    user_id: string | null;
-  } | null;
+  expense_date: string;
+  description: string;
+  total_amount: number;
+  category: string;
+  my_share: number;
 };
 
 const currencyFormatter = new Intl.NumberFormat("en-IN", {
@@ -53,32 +49,36 @@ export default async function GroupPage({ params }: { params: Promise<{ groupId:
   const { data: userData } = await supabase.auth.getUser();
   if (!userData.user) redirect(`/login?next=/groups/${groupId}`);
 
-  const [groupResult, membersResult, expensesResult] = await Promise.all([
-    supabase.from("expense_groups").select("id, name, created_at").eq("id", groupId).maybeSingle(),
+  // All three run through SECURITY DEFINER RPCs, so no cross-table RLS recursion.
+  const [groupsResult, membersResult, expensesResult] = await Promise.all([
+    supabase.rpc("list_my_groups"),
     supabase.rpc("list_group_members", { target_group_id: groupId }),
-    supabase
-      .from("split_receivables")
-      .select("id, expense_id, friend_name, amount_owed, is_settled, settled_date, expenses(id, date, description, total_amount, category, my_share, user_id)")
-      .eq("group_id", groupId)
-      .order("created_at", { ascending: false }),
+    supabase.rpc("list_group_expenses", { target_group_id: groupId }),
   ]);
 
-  if (groupResult.error || !groupResult.data) notFound();
+  if (groupsResult.error) throw new Error(groupsResult.error.message);
   if (membersResult.error) throw new Error(membersResult.error.message);
   if (expensesResult.error) throw new Error(expensesResult.error.message);
 
-  const expenses = (expensesResult.data ?? []) as GroupExpense[];
-  const uniqueExpenses = new Map<string, { expense: NonNullable<GroupExpense["expenses"]>; splits: GroupExpense[] }>();
-  for (const split of expenses) {
-    if (!split.expenses) continue;
-    const current = uniqueExpenses.get(split.expenses.id);
-    if (current) current.splits.push(split);
-    else uniqueExpenses.set(split.expenses.id, { expense: split.expenses, splits: [split] });
+  const group = (groupsResult.data ?? []).find((item) => item.group_id === groupId);
+  if (!group) notFound();
+
+  const members = membersResult.data ?? [];
+  const rows = (expensesResult.data ?? []) as GroupExpenseRow[];
+
+  const uniqueExpenses = new Map<
+    string,
+    { expense: Omit<GroupExpenseRow, "split_id" | "friend_name" | "amount_owed" | "is_settled" | "settled_date">; splits: GroupExpenseRow[] }
+  >();
+  for (const row of rows) {
+    const current = uniqueExpenses.get(row.expense_id);
+    if (current) current.splits.push(row);
+    else uniqueExpenses.set(row.expense_id, { expense: row, splits: [row] });
   }
 
   const expenseRows = [...uniqueExpenses.values()];
-  const totalTracked = expenseRows.reduce((total, row) => total + row.expense.total_amount, 0);
-  const totalOutstanding = expenses.reduce((total, split) => total + (split.is_settled ? 0 : split.amount_owed), 0);
+  const totalTracked = expenseRows.reduce((total, item) => total + item.expense.total_amount, 0);
+  const totalOutstanding = rows.reduce((total, row) => total + (row.is_settled ? 0 : row.amount_owed), 0);
 
   return (
     <div className="space-y-6">
@@ -94,12 +94,12 @@ export default async function GroupPage({ params }: { params: Promise<{ groupId:
               <Users className="size-4" aria-hidden="true" />
               <span>Shared group</span>
             </div>
-            <h1 className="text-3xl font-semibold tracking-tight">{groupResult.data.name}</h1>
+            <h1 className="text-3xl font-semibold tracking-tight">{group.group_name}</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Created {dateFormatter.format(new Date(groupResult.data.created_at))}
+              Created {dateFormatter.format(new Date(group.created_at))}
             </p>
           </div>
-          <Badge variant="secondary">{membersResult.data?.length ?? 0} members</Badge>
+          <Badge variant="secondary">{members.length} members</Badge>
         </div>
       </header>
 
@@ -133,17 +133,17 @@ export default async function GroupPage({ params }: { params: Promise<{ groupId:
           {expenseRows.length === 0 ? (
             <p className="rounded-lg border border-dashed p-6 text-sm text-muted-foreground">No expenses have been added to this group yet.</p>
           ) : expenseRows.map(({ expense, splits }) => (
-            <article key={expense.id} className="rounded-lg border p-4">
+            <article key={expense.expense_id} className="rounded-lg border p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="truncate font-medium">{expense.description}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{dateFormatter.format(new Date(expense.date))} · {expense.category}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{dateFormatter.format(new Date(expense.expense_date))} · {expense.category}</p>
                 </div>
                 <div className="text-right"><p className="font-semibold">{currencyFormatter.format(expense.total_amount)}</p><p className="text-xs text-muted-foreground">My share: {currencyFormatter.format(expense.my_share)}</p></div>
               </div>
               <div className="mt-3 grid gap-2 border-t pt-3 sm:grid-cols-2">
                 {splits.map((split) => (
-                  <div key={split.id} className="flex items-center justify-between gap-3 text-sm">
+                  <div key={split.split_id} className="flex items-center justify-between gap-3 text-sm">
                     <span className="truncate text-muted-foreground">{split.friend_name}</span>
                     <span className="flex shrink-0 items-center gap-2 font-medium">
                       {currencyFormatter.format(split.amount_owed)}
@@ -160,7 +160,7 @@ export default async function GroupPage({ params }: { params: Promise<{ groupId:
       <Card>
         <CardHeader><CardTitle>Members</CardTitle><CardDescription>People currently included in this group.</CardDescription></CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          {(membersResult.data ?? []).map((member) => <Badge key={member.user_id} variant="outline">{member.user_code}</Badge>)}
+          {members.map((member) => <Badge key={member.user_id} variant="outline">{member.user_code}</Badge>)}
         </CardContent>
       </Card>
     </div>

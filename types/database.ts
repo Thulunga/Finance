@@ -461,6 +461,24 @@ export type Database = {
           joined_at: string;
         }[];
       };
+      list_group_expenses: {
+        Args: { target_group_id: string };
+        Returns: {
+          split_id: string;
+          expense_id: string;
+          friend_name: string;
+          amount_owed: number;
+          is_settled: boolean;
+          settled_date: string | null;
+          created_at: string;
+          expense_date: string;
+          description: string;
+          total_amount: number;
+          category: string;
+          my_share: number;
+          owner_id: string | null;
+        }[];
+      };
     };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;

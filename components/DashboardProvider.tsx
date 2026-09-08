@@ -27,13 +27,30 @@ import {
 } from "@/app/actions/cashActions";
 import { fetchMonthlyBudgets } from "@/app/actions/budgetActions";
 import { deleteExpense, fetchExpensesThroughMonth, fetchMonthlyExpenses, updateExpense } from "@/app/actions/expenseActions";
+import {
+  createEpfBalance,
+  createFdAccount,
+  deleteEpfBalance,
+  deleteFdAccount,
+  updateFdAccount,
+} from "@/app/actions/assetActions";
+import {
+  addFriendByCode,
+  addGroupMemberByCode,
+  createExpenseGroup,
+  fetchMyFriends,
+  fetchMyGroups,
+} from "@/app/actions/groupActions";
+import { settleReceivableAsFriend } from "@/app/actions/splitActions";
 import type { Tables } from "@/types/database";
 import type { IncomeLike, AllocationLike } from "@/lib/budgetCalculations";
 
 type BudgetRow = Tables<"budgets">;
 type SplitRow = Tables<"split_receivables">;
 type CategoryRow = Tables<"categories">;
-export type BalanceSection = "cash-flow" | "budget" | "transactions" | "receivables";
+type EpfRow = Tables<"epf_balances">;
+type FdRow = Tables<"fd_accounts">;
+export type BalanceSection = "cash-flow" | "budget" | "transactions" | "receivables" | "assets";
 const BALANCE_DEFAULT_EVENT = "finance-balance-default-changed";
 
 export type ExpenseWithSplits = Tables<"expenses"> & {
@@ -42,6 +59,18 @@ export type ExpenseWithSplits = Tables<"expenses"> & {
 
 export type PendingReceivable = SplitRow & {
   expense: Pick<Tables<"expenses">, "date" | "description" | "category"> | null;
+};
+
+export type Friend = { user_id: string; user_code: string; avatar_path: string | null };
+export type MyGroup = {
+  group_id: string;
+  group_name: string;
+  member_count: number;
+  is_owner: boolean;
+  created_at: string;
+};
+export type OwedByMeSplit = SplitRow & {
+  expenses: Pick<Tables<"expenses">, "date" | "description" | "category" | "user_id"> | null;
 };
 
 type DashboardContextValue = {
@@ -82,11 +111,25 @@ type DashboardContextValue = {
     amount: number;
   }) => void;
   deleteAllocation: (id: string) => void;
+  epfHistory: EpfRow[];
+  addEpfBalance: (input: { balance: number; recorded_at: string; note?: string }) => void;
+  removeEpfBalance: (id: string) => void;
+  fdAccounts: FdRow[];
+  addFdAccount: (input: { bank_name: string; amount: number; interest_rate?: number | null; maturity_date?: string | null; note?: string }) => void;
+  editFdAccount: (id: string, input: { bank_name: string; amount: number; interest_rate?: number | null; maturity_date?: string | null; note?: string }) => void;
+  removeFdAccount: (id: string) => void;
   showBalances: boolean;
   toggleBalances: () => void;
   sectionVisibility: Record<BalanceSection, boolean>;
   toggleSectionVisibility: (section: BalanceSection) => void;
   setDefaultBalanceVisibility: (visible: boolean) => void;
+  friends: Friend[];
+  groups: MyGroup[];
+  owedByMe: OwedByMeSplit[];
+  addFriend: (userCode: string) => Promise<void>;
+  createGroup: (name: string) => Promise<void>;
+  addGroupMember: (groupId: string, userCode: string) => Promise<void>;
+  settleOwedSplit: (splitId: string, markSettled: boolean) => void;
 };
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
@@ -100,6 +143,11 @@ export function DashboardProvider({
   initialCategories,
   initialIncome,
   initialAllocations,
+  initialEpfHistory,
+  initialFdAccounts,
+  initialFriends,
+  initialGroups,
+  initialOwedByMe,
   userEmail,
   children,
 }: Readonly<{
@@ -111,6 +159,11 @@ export function DashboardProvider({
   initialCategories: CategoryRow[];
   initialIncome: IncomeLike[];
   initialAllocations: AllocationLike[];
+  initialEpfHistory: EpfRow[];
+  initialFdAccounts: FdRow[];
+  initialFriends: Friend[];
+  initialGroups: MyGroup[];
+  initialOwedByMe: OwedByMeSplit[];
   userEmail: string;
   children: React.ReactNode;
 }>) {
@@ -125,6 +178,11 @@ export function DashboardProvider({
   const [categoryRows, setCategoryRows] = useState(initialCategories);
   const [income, setIncome] = useState(initialIncome);
   const [allocations, setAllocations] = useState(initialAllocations);
+  const [epfHistory, setEpfHistory] = useState(initialEpfHistory);
+  const [friends, setFriends] = useState(initialFriends);
+  const [groups, setGroups] = useState(initialGroups);
+  const [owedByMe, setOwedByMe] = useState(initialOwedByMe);
+  const [fdAccounts, setFdAccounts] = useState(initialFdAccounts);
   const [loadedMonths, setLoadedMonths] = useState(() => new Set([initialMonth]));
   const storageKey = `finance-balance-default:${userEmail}`;
   const [showBalances, setShowBalances] = useState(false);
@@ -133,6 +191,7 @@ export function DashboardProvider({
     budget: false,
     transactions: false,
     receivables: false,
+    assets: false,
   });
 
   useEffect(() => {
@@ -146,6 +205,7 @@ export function DashboardProvider({
           budget: visible,
           transactions: visible,
           receivables: visible,
+          assets: visible,
         });
       });
     }
@@ -158,6 +218,7 @@ export function DashboardProvider({
         budget: visible,
         transactions: visible,
         receivables: visible,
+        assets: visible,
       });
     };
 
@@ -493,6 +554,119 @@ export function DashboardProvider({
     startTransition(async () => { try { await deleteCashAllocation(id); } catch (error) { setAllocations(previous); toast.error(error instanceof Error ? error.message : "Could not delete allocation."); } });
   }, [allocations]);
 
+  const addEpfBalance = useCallback((input: { balance: number; recorded_at: string; note?: string }) => {
+    const optimisticEntry: EpfRow = {
+      id: `pending-${crypto.randomUUID()}`,
+      user_id: "pending",
+      balance: input.balance,
+      recorded_at: input.recorded_at,
+      note: input.note ?? null,
+      created_at: new Date().toISOString(),
+    };
+    const previous = epfHistory;
+    setEpfHistory((current) => [optimisticEntry, ...current].sort((a, b) => b.recorded_at.localeCompare(a.recorded_at)));
+
+    startTransition(async () => {
+      try {
+        const entry = await createEpfBalance(input);
+        setEpfHistory((current) => [entry, ...current.filter((item) => item !== optimisticEntry)].sort((a, b) => b.recorded_at.localeCompare(a.recorded_at)));
+      } catch (error) {
+        setEpfHistory(previous);
+        toast.error(error instanceof Error ? error.message : "Could not save EPF balance.");
+      }
+    });
+  }, [epfHistory]);
+
+  const removeEpfBalance = useCallback((id: string) => {
+    const previous = epfHistory;
+    setEpfHistory((current) => current.filter((item) => item.id !== id));
+    startTransition(async () => { try { await deleteEpfBalance(id); } catch (error) { setEpfHistory(previous); toast.error(error instanceof Error ? error.message : "Could not delete EPF balance."); } });
+  }, [epfHistory]);
+
+  const addFdAccount = useCallback((input: { bank_name: string; amount: number; interest_rate?: number | null; maturity_date?: string | null; note?: string }) => {
+    const optimisticAccount: FdRow = {
+      id: `pending-${crypto.randomUUID()}`,
+      user_id: "pending",
+      bank_name: input.bank_name,
+      amount: input.amount,
+      interest_rate: input.interest_rate ?? null,
+      maturity_date: input.maturity_date ?? null,
+      note: input.note ?? null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    const previous = fdAccounts;
+    setFdAccounts((current) => [optimisticAccount, ...current]);
+
+    startTransition(async () => {
+      try {
+        const account = await createFdAccount(input);
+        setFdAccounts((current) => [account, ...current.filter((item) => item !== optimisticAccount)]);
+      } catch (error) {
+        setFdAccounts(previous);
+        toast.error(error instanceof Error ? error.message : "Could not save FD account.");
+      }
+    });
+  }, [fdAccounts]);
+
+  const editFdAccount = useCallback((id: string, input: { bank_name: string; amount: number; interest_rate?: number | null; maturity_date?: string | null; note?: string }) => {
+    const previous = fdAccounts.find((item) => item.id === id);
+    setFdAccounts((current) => current.map((item) => item.id === id ? { ...item, ...input, interest_rate: input.interest_rate ?? null, maturity_date: input.maturity_date ?? null, note: input.note ?? null } : item));
+    startTransition(async () => {
+      try { const saved = await updateFdAccount(id, input); setFdAccounts((current) => current.map((item) => item.id === id ? saved : item)); }
+      catch (error) { if (previous) setFdAccounts((current) => current.map((item) => item.id === id ? previous : item)); toast.error(error instanceof Error ? error.message : "Could not update FD account."); }
+    });
+  }, [fdAccounts]);
+
+  const removeFdAccount = useCallback((id: string) => {
+    const previous = fdAccounts;
+    setFdAccounts((current) => current.filter((item) => item.id !== id));
+    startTransition(async () => { try { await deleteFdAccount(id); } catch (error) { setFdAccounts(previous); toast.error(error instanceof Error ? error.message : "Could not delete FD account."); } });
+  }, [fdAccounts]);
+
+  const addFriend = useCallback(async (userCode: string) => {
+    await addFriendByCode(userCode);
+    const nextFriends = await fetchMyFriends();
+    setFriends(nextFriends);
+  }, []);
+
+  const createGroup = useCallback(async (name: string) => {
+    await createExpenseGroup(name);
+    const nextGroups = await fetchMyGroups();
+    setGroups(nextGroups);
+  }, []);
+
+  const addGroupMember = useCallback(async (groupId: string, userCode: string) => {
+    await addGroupMemberByCode(groupId, userCode);
+    const [nextGroups, nextFriends] = await Promise.all([fetchMyGroups(), fetchMyFriends()]);
+    setGroups(nextGroups);
+    setFriends(nextFriends);
+  }, []);
+
+  const settleOwedSplit = useCallback(
+    (splitId: string, markSettled: boolean) => {
+      const previous = owedByMe;
+
+      setOwedByMe((current) =>
+        current.map((split) =>
+          split.id === splitId
+            ? { ...split, is_settled: markSettled, settled_date: markSettled ? new Date().toISOString().slice(0, 10) : null }
+            : split
+        )
+      );
+
+      startTransition(async () => {
+        try {
+          await settleReceivableAsFriend(splitId, markSettled);
+        } catch (error) {
+          setOwedByMe(previous);
+          toast.error(error instanceof Error ? error.message : "Could not update that split.");
+        }
+      });
+    },
+    [owedByMe]
+  );
+
   const categories = useMemo(
     () => categoryRows.map((category) => category.name),
     [categoryRows]
@@ -525,11 +699,25 @@ export function DashboardProvider({
       deleteIncome: removeIncome,
       updateAllocation: editAllocation,
       deleteAllocation: removeAllocation,
+      epfHistory,
+      addEpfBalance,
+      removeEpfBalance,
+      fdAccounts,
+      addFdAccount,
+      editFdAccount,
+      removeFdAccount,
       showBalances,
       toggleBalances,
       sectionVisibility,
       toggleSectionVisibility,
       setDefaultBalanceVisibility,
+      friends,
+      groups,
+      owedByMe,
+      addFriend,
+      createGroup,
+      addGroupMember,
+      settleOwedSplit,
     }),
     [
       monthYear,
@@ -556,12 +744,26 @@ export function DashboardProvider({
       editIncome,
       removeIncome,
       editAllocation,
+      epfHistory,
+      addEpfBalance,
+      removeEpfBalance,
+      fdAccounts,
+      addFdAccount,
+      editFdAccount,
+      removeFdAccount,
       removeAllocation,
       showBalances,
       toggleBalances,
       sectionVisibility,
       toggleSectionVisibility,
       setDefaultBalanceVisibility,
+      friends,
+      groups,
+      owedByMe,
+      addFriend,
+      createGroup,
+      addGroupMember,
+      settleOwedSplit,
     ]
   );
 

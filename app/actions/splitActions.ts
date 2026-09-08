@@ -8,7 +8,7 @@ export async function settleReceivable(splitId: string) {
     throw new Error("splitId is required");
   }
 
-  const { supabase } = await requireUser();
+  const { supabase, user } = await requireUser();
 
   const { data, error } = await supabase
     .from("split_receivables")
@@ -19,6 +19,32 @@ export async function settleReceivable(splitId: string) {
     .eq("id", splitId)
     .select("id, expense_id, friend_name, amount_owed, is_settled, settled_date")
     .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  await supabase
+    .from("split_settlement_history")
+    .insert({ split_id: splitId, action: "settled", actor_user_id: user.id });
+
+  revalidatePath("/");
+
+  return data;
+}
+
+/** Used by the friend the split is assigned to, settling from their own account. */
+export async function settleReceivableAsFriend(splitId: string, markSettled: boolean) {
+  if (!splitId.trim()) {
+    throw new Error("splitId is required");
+  }
+
+  const { supabase } = await requireUser();
+
+  const { data, error } = await supabase.rpc("settle_split_as_friend", {
+    target_split_id: splitId,
+    mark_settled: markSettled,
+  });
 
   if (error) {
     throw new Error(error.message);
@@ -96,4 +122,23 @@ export async function deleteReceivable(splitId: string) {
   revalidatePath("/");
 
   return { id: splitId, expense_id: receivable.expense_id };
+}
+
+/** Splits assigned to the current user by other people (money the user owes). */
+export async function fetchOwedByMe() {
+  const { supabase, user } = await requireUser();
+
+  const { data, error } = await supabase
+    .from("split_receivables")
+    .select(
+      "id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, friend_user_id, group_id, expenses(date, description, category, user_id)"
+    )
+    .eq("friend_user_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data ?? [];
 }

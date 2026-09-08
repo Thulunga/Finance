@@ -1,7 +1,7 @@
 "use client";
 
 import { startTransition, useMemo, useState } from "react";
-import { Check, CircleHelp, CreditCard, LoaderCircle, Plus, ReceiptText, Trash2, WalletCards } from "lucide-react";
+import { Check, CircleHelp, CreditCard, LoaderCircle, Plus, ReceiptText, Trash2, Users, WalletCards } from "lucide-react";
 
 import { createExpense } from "@/app/actions/expenseActions";
 import { useDashboard } from "@/components/DashboardProvider";
@@ -42,6 +42,7 @@ const FALLBACK_CATEGORIES = [
 type FriendSplit = {
   id: string;
   friend_name: string;
+  friend_user_id: string | null;
   amount_owed: number;
 };
 
@@ -61,8 +62,68 @@ function createSplitRow(): FriendSplit {
   return {
     id: crypto.randomUUID(),
     friend_name: "",
+    friend_user_id: null,
     amount_owed: 0,
   };
+}
+
+function FriendPicker({
+  value,
+  disabled,
+  onSelect,
+}: Readonly<{
+  value: string;
+  disabled?: boolean;
+  onSelect: (name: string, userId: string | null) => void;
+}>) {
+  const { friends } = useDashboard();
+  const [open, setOpen] = useState(false);
+  const filtered = friends.filter((friend) =>
+    friend.user_code.toLowerCase().includes(value.trim().toLowerCase())
+  );
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={
+          <Input
+            disabled={disabled}
+            placeholder="Friend name or user code"
+            value={value}
+            onChange={(event) => {
+              onSelect(event.target.value, null);
+              setOpen(true);
+            }}
+            onFocus={() => setOpen(true)}
+          />
+        }
+      />
+      {friends.length > 0 ? (
+        <PopoverContent align="start" className="w-64 p-1">
+          {filtered.length === 0 ? (
+            <p className="p-2 text-xs text-muted-foreground">No matching friends. You can still type a name.</p>
+          ) : (
+            <div className="max-h-48 overflow-y-auto">
+              {filtered.map((friend) => (
+                <button
+                  key={friend.user_id}
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm hover:bg-muted"
+                  onClick={() => {
+                    onSelect(friend.user_code, friend.user_id);
+                    setOpen(false);
+                  }}
+                >
+                  <Users className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                  {friend.user_code}
+                </button>
+              ))}
+            </div>
+          )}
+        </PopoverContent>
+      ) : null}
+    </Popover>
+  );
 }
 
 export function ExpenseForm({
@@ -149,6 +210,7 @@ export function ExpenseForm({
             ? splits.map((split) => ({
                 friend_name: split.friend_name,
                 amount_owed: split.amount_owed,
+                friend_user_id: split.friend_user_id,
               }))
             : undefined,
         });
@@ -311,12 +373,11 @@ export function ExpenseForm({
                     key={split.id}
                     className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_10rem_auto] sm:items-center"
                   >
-                    <Input
+                    <FriendPicker
                       disabled={isCommitting}
-                      placeholder="Friend name"
                       value={split.friend_name}
-                      onChange={(event) =>
-                        updateSplit(split.id, { friend_name: event.target.value })
+                      onSelect={(name, userId) =>
+                        updateSplit(split.id, { friend_name: name, friend_user_id: userId })
                       }
                     />
                     <Input

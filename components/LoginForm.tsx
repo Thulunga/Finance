@@ -9,7 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { createClient } from "@/utils/supabase/client";
 
-export function LoginForm() {
+export function LoginForm({ redirectTo = "/" }: Readonly<{ redirectTo?: string }>) {
   const router = useRouter();
   const supabase = createClient();
   const [isSignUp, setIsSignUp] = useState(false);
@@ -48,7 +48,7 @@ export function LoginForm() {
       return;
     }
 
-    router.replace("/");
+    router.replace(redirectTo);
     router.refresh();
   }
 

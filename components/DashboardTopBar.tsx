@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { CalendarRange, LoaderCircle, Plus, SlidersHorizontal, Users } from "lucide-react";
+import { CalendarRange, LoaderCircle, Plus, SlidersHorizontal, UsersRound, Users, Wallet } from "lucide-react";
 import { ExpenseForm } from "@/components/ExpenseForm";
 import { CashFlowEntryForms } from "@/components/CashFlowEntryForms";
+import { AssetEntryForms } from "@/components/AssetEntryForms";
 import { SplitManager } from "@/components/SplitManager";
+import { FriendsGroupsManager } from "@/components/FriendsGroupsManager";
 
 import { BudgetManager } from "@/components/BudgetManager";
 import { useDashboard } from "@/components/DashboardProvider";
@@ -36,9 +38,11 @@ const monthFormatter = new Intl.DateTimeFormat("en-IN", {
 
 export function DashboardTopBar() {
   const [cashFlowOpen, setCashFlowOpen] = useState(false);
+  const [assetsOpen, setAssetsOpen] = useState(false);
   const [expenseOpen, setExpenseOpen] = useState(false);
   const [budgetOpen, setBudgetOpen] = useState(false);
   const [receivablesOpen, setReceivablesOpen] = useState(false);
+  const [friendsOpen, setFriendsOpen] = useState(false);
   const { monthYear, selectMonth, isLoadingMonth, budgets, expenses } = useDashboard();
   const kpis = calculateOverallKPIs(budgets, expenses, monthYear);
 
@@ -112,6 +116,19 @@ export function DashboardTopBar() {
             <CashFlowEntryForms onCompleted={() => setCashFlowOpen(false)} />
           </DialogContent>
         </Dialog>
+        <Dialog open={assetsOpen} onOpenChange={setAssetsOpen}>
+          <DialogTrigger render={<Button className="flex-1 sm:flex-none" type="button" variant="outline" />}>
+            <Wallet className="size-4" aria-hidden="true" />
+            Assets
+          </DialogTrigger>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Add asset balance</DialogTitle>
+              <DialogDescription>Update your EPF balance or add a fixed deposit.</DialogDescription>
+            </DialogHeader>
+            <AssetEntryForms onCompleted={() => setAssetsOpen(false)} />
+          </DialogContent>
+        </Dialog>
         <Dialog open={expenseOpen} onOpenChange={setExpenseOpen}>
           <DialogTrigger render={<Button className="flex-1 sm:flex-none" type="button" />}>
             <Plus className="size-4" aria-hidden="true" />
@@ -133,9 +150,22 @@ export function DashboardTopBar() {
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
             <DialogHeader>
               <DialogTitle>Receivables</DialogTitle>
-              <DialogDescription>Review and settle money friends owe you.</DialogDescription>
+              <DialogDescription>Review and settle money friends owe you, or what you owe them.</DialogDescription>
             </DialogHeader>
             <SplitManager />
+          </DialogContent>
+        </Dialog>
+        <Dialog open={friendsOpen} onOpenChange={setFriendsOpen}>
+          <DialogTrigger render={<Button className="flex-1 sm:flex-none" type="button" variant="outline" />}>
+            <UsersRound className="size-4" aria-hidden="true" />
+            Friends & groups
+          </DialogTrigger>
+          <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>Friends & groups</DialogTitle>
+              <DialogDescription>Connect with people to split expenses with them.</DialogDescription>
+            </DialogHeader>
+            <FriendsGroupsManager />
           </DialogContent>
         </Dialog>
       </div>

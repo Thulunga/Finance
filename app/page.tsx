@@ -1,144 +1,27 @@
-import { cookies } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
+import { BarChart3, ChevronRight } from "lucide-react";
 
 import { BudgetHealthCards } from "@/components/BudgetHealthCards";
-import { FinancialAnalytics } from "@/components/FinancialAnalytics";
 import { CashFlowManager } from "@/components/CashFlowManager";
-import {
-  DashboardProvider,
-  type ExpenseWithSplits,
-  type PendingReceivable,
-} from "@/components/DashboardProvider";
+import { AssetBalances } from "@/components/AssetBalances";
+import { DashboardProvider } from "@/components/DashboardProvider";
 import { DashboardTopBar } from "@/components/DashboardTopBar";
 import { RecentTransactions } from "@/components/RecentTransactions";
 import { SectionVisibilityToggle } from "@/components/SectionVisibilityToggle";
-import { createClient } from "@/utils/supabase/server";
-import type { Tables } from "@/types/database";
+import { loadDashboardData } from "@/lib/dashboardData";
 
 export const dynamic = "force-dynamic";
 
-const EXPENSE_COLUMNS =
-  "id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id, split_receivables(id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at)";
-
-const DEFAULT_CATEGORIES = [
-  "Rent & Utilities",
-  "Food & Groceries",
-  "Travel & Fuel",
-  "Lifestyle & Dining",
-  "Discretionary",
-];
-
-function getCurrentMonthYear() {
-  const now = new Date();
-
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function getNextMonthStart(monthYear: string) {
-  const [year, month] = monthYear.split("-").map(Number);
-  const isDecember = month === 12;
-
-  return `${isDecember ? year + 1 : year}-${String(
-    isDecember ? 1 : month + 1
-  ).padStart(2, "0")}-01`;
-}
-
-async function loadCategories(
-  supabase: ReturnType<typeof createClient>,
-  userId: string
-): Promise<Tables<"categories">[]> {
-  const { data, error } = await supabase
-    .from("categories")
-    .select("id, name, user_id, created_at")
-    .eq("user_id", userId)
-    .order("name", { ascending: true });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  if (data && data.length > 0) {
-    return data;
-  }
-
-  const { data: seededCategories, error: seedError } = await supabase
-    .from("categories")
-    .insert(DEFAULT_CATEGORIES.map((name) => ({ name, user_id: userId })))
-    .select("id, name, user_id, created_at");
-
-  if (seedError) {
-    throw new Error(seedError.message);
-  }
-
-  return seededCategories ?? [];
-}
-
 export default async function Home() {
-  const initialMonth = getCurrentMonthYear();
-  const cookieStore = await cookies();
-  const supabase = createClient(cookieStore);
-  const { data: userData } = await supabase.auth.getUser();
+  const data = await loadDashboardData();
 
-  if (!userData.user) {
+  if (!data) {
     redirect("/login");
   }
 
-  const [budgetsResult, expensesResult, cashExpensesResult, splitsResult, categories, incomeResult, allocationsResult] = await Promise.all([
-    supabase
-      .from("budgets")
-      .select("id, category, allocated_amount, month_year, created_at, user_id")
-      .eq("month_year", initialMonth)
-      .order("category", { ascending: true }),
-    supabase
-      .from("expenses")
-      .select(EXPENSE_COLUMNS)
-      .gte("date", `${initialMonth}-01`)
-      .lt("date", getNextMonthStart(initialMonth))
-      .order("date", { ascending: false }),
-    supabase
-      .from("expenses")
-      .select(EXPENSE_COLUMNS)
-      .lt("date", getNextMonthStart(initialMonth))
-      .order("date", { ascending: false }),
-    supabase
-      .from("split_receivables")
-      .select(
-        "id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, expenses(date, description, category)"
-      )
-      .eq("is_settled", false)
-      .order("created_at", { ascending: false }),
-    loadCategories(supabase, userData.user.id),
-    supabase
-      .from("income_entries")
-      .select("id, user_id, date, description, amount, month_year, created_at")
-      .eq("user_id", userData.user.id)
-      .lte("month_year", initialMonth)
-      .order("date", { ascending: false }),
-    supabase
-      .from("cash_allocations")
-      .select("id, user_id, date, month_year, allocation_type, description, amount, created_at")
-      .eq("user_id", userData.user.id)
-      .lte("month_year", initialMonth)
-      .order("created_at", { ascending: false }),
-  ]);
-
-  const initialExpenses: ExpenseWithSplits[] = expensesResult.data ?? [];
-  const initialReceivables: PendingReceivable[] = (splitsResult.data ?? []).map(
-    ({ expenses, ...split }) => ({ ...split, expense: expenses ?? null })
-  );
-
   return (
-    <DashboardProvider
-      initialMonth={initialMonth}
-      initialBudgets={budgetsResult.data ?? []}
-      initialExpenses={initialExpenses}
-      initialCashExpenses={cashExpensesResult.data ?? []}
-      initialReceivables={initialReceivables}
-      initialCategories={categories}
-      initialIncome={incomeResult.data ?? []}
-      initialAllocations={allocationsResult.data ?? []}
-      userEmail={userData.user.email ?? userData.user.id}
-    >
+    <DashboardProvider {...data}>
       <div className="space-y-4 sm:space-y-6">
         <DashboardTopBar />
 
@@ -148,6 +31,14 @@ export default async function Home() {
             <SectionVisibilityToggle label="cash overview" section="cash-flow" />
           </div>
           <CashFlowManager />
+        </section>
+
+        <section aria-labelledby="assets-heading" className="space-y-3 sm:space-y-4">
+          <div className="flex items-start justify-between gap-3 px-1">
+            <div className="min-w-0"><h2 id="assets-heading" className="text-lg font-semibold tracking-tight">Assets</h2><p className="text-sm text-muted-foreground">Track your EPF balance and fixed deposits outside daily cash flow.</p></div>
+            <SectionVisibilityToggle label="assets" section="assets" />
+          </div>
+          <AssetBalances />
         </section>
 
         <section aria-labelledby="budget-heading" className="space-y-3 sm:space-y-4">
@@ -162,13 +53,19 @@ export default async function Home() {
           <BudgetHealthCards />
         </section>
 
-        <section aria-labelledby="analytics-heading" className="space-y-3 sm:space-y-4">
-          <div className="px-1">
-            <h2 id="analytics-heading" className="text-lg font-semibold tracking-tight">Analytics</h2>
-            <p className="text-sm text-muted-foreground">A visual read of your category usage and monthly allocations.</p>
+        <Link
+          href="/analytics"
+          className="flex items-center gap-3 rounded-xl border bg-card/70 p-4 shadow-sm transition-colors hover:bg-muted/40 sm:p-5"
+        >
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+            <BarChart3 className="size-5" aria-hidden="true" />
           </div>
-          <FinancialAnalytics />
-        </section>
+          <div className="min-w-0 flex-1">
+            <p className="font-semibold tracking-tight">Analytics</p>
+            <p className="text-sm text-muted-foreground">Category pressure, allocation mix, and monthly trends.</p>
+          </div>
+          <ChevronRight className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        </Link>
 
         <section aria-labelledby="activity-heading" className="space-y-3 sm:space-y-4">
           <div className="px-1">

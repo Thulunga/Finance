@@ -6,6 +6,8 @@ import { requireUser } from "@/lib/requireUser";
 type ExpenseSplitInput = {
   friend_name: string;
   amount_owed: number;
+  friend_user_id?: string | null;
+  group_id?: string | null;
 };
 
 type CreateExpenseInput = {
@@ -96,10 +98,12 @@ export async function createExpense(input: CreateExpenseInput) {
           expense_id: expense.id,
           friend_name: split.friend_name.trim(),
           amount_owed: split.amount_owed,
+          friend_user_id: split.friend_user_id ?? null,
+          group_id: split.group_id ?? null,
         }))
       )
       .select(
-        "id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at"
+        "id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, friend_user_id, group_id"
       );
 
     if (splitError) {
@@ -144,7 +148,7 @@ export async function fetchMonthlyExpenses(monthYear: string) {
   const { data, error } = await supabase
     .from("expenses")
     .select(
-      "id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id, split_receivables(id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at)"
+      "id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id, split_receivables(id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, friend_user_id, group_id)"
     )
     .eq("user_id", user.id)
     .gte("date", `${monthYear}-01`)
@@ -168,7 +172,7 @@ export async function fetchExpensesThroughMonth(monthYear: string) {
   const { data, error } = await supabase
     .from("expenses")
     .select(
-      "id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id, split_receivables(id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at)"
+      "id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id, split_receivables(id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, friend_user_id, group_id)"
     )
     .eq("user_id", user.id)
     .lt("date", getNextMonthStart(monthYear))
@@ -199,7 +203,7 @@ export async function updateExpense(input: {
     .update({ date: input.date, description: input.description.trim(), category: input.category.trim(), total_amount: input.total_amount, my_share: input.total_amount, is_credit_card: input.is_credit_card, is_credit_card_payment: input.is_credit_card_payment })
     .eq("id", input.id)
     .eq("user_id", user.id)
-    .select("id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id, split_receivables(id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at)")
+    .select("id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id, split_receivables(id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, friend_user_id, group_id)")
     .single();
   if (error) throw new Error(error.message);
   revalidatePath("/");

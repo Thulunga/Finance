@@ -29,10 +29,19 @@ export function CashFlowManager() {
     deleteIncome,
     updateAllocation,
     deleteAllocation,
+    epfHistory,
+    fdAccounts,
+    receivables,
     sectionVisibility,
   } = useDashboard();
   const showBalances = sectionVisibility["cash-flow"];
   const kpis = calculateOverallKPIs(budgets, expenses, monthYear, income, allocations, cashExpenses);
+  const latestEpfBalance = epfHistory[0]?.balance ?? 0;
+  const totalFdAmount = fdAccounts.reduce((sum, account) => sum + account.amount, 0);
+  const totalNetWorth = kpis.totalFinancialPosition + latestEpfBalance + totalFdAmount;
+  const pendingReceivablesTotal = receivables
+    .filter((item) => !item.is_settled)
+    .reduce((total, item) => total + item.amount_owed, 0);
   const visibleIncome = income.filter((entry) => entry.month_year === monthYear);
   const visibleAllocations = allocations.filter((allocation) => allocation.month_year === monthYear);
   const displayMoney = (value: number) => (showBalances ? money.format(value) : "••••••");
@@ -96,11 +105,22 @@ export function CashFlowManager() {
         </Card>
         <Card>
           <CardHeader><CardTitle>Liquid cash</CardTitle><CardDescription>Unallocated spending-account balance</CardDescription><CardAction><PiggyBank className="size-5 text-emerald-600" /></CardAction></CardHeader>
-          <CardContent className="min-w-0"><div className="space-y-1"><p className={`break-all font-mono text-2xl font-semibold tabular-nums sm:text-3xl ${kpis.cashAvailable < 0 ? "text-red-600" : "text-emerald-600"}`}>{displayMoney(kpis.cashAvailable)}</p><p className="text-xs text-muted-foreground">Total liquid balance</p></div></CardContent>
+          <CardContent className="min-w-0">
+            <div className="space-y-1">
+              <p className={`break-all font-mono text-2xl font-semibold tabular-nums sm:text-3xl ${kpis.cashAvailable - pendingReceivablesTotal < 0 ? "text-red-600" : "text-emerald-600"}`}>{displayMoney(kpis.cashAvailable - pendingReceivablesTotal)}</p>
+              <p className="text-xs text-muted-foreground">In hand now (total minus pending receivable)</p>
+              <p className="text-xs text-muted-foreground">Total: <span className="font-mono tabular-nums">{displayMoney(kpis.cashAvailable)}</span></p>
+              <p className="text-xs text-muted-foreground">Pending receivable: <span className="font-mono tabular-nums">{displayMoney(pendingReceivablesTotal)}</span></p>
+            </div>
+          </CardContent>
         </Card>
         <Card className="max-sm:col-span-2">
           <CardHeader><CardTitle>Total financial position</CardTitle><CardDescription>Cash, assets, and reserves minus card due</CardDescription><CardAction><Sparkles className="size-5 text-emerald-600" /></CardAction></CardHeader>
           <CardContent className="min-w-0"><p className="break-all font-mono text-2xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400 sm:text-3xl">{displayMoney(kpis.totalFinancialPosition)}</p><p className="mt-1 text-xs text-muted-foreground">Overall position</p></CardContent>
+        </Card>
+        <Card className="max-sm:col-span-2">
+          <CardHeader><CardTitle>Total net worth</CardTitle><CardDescription>Financial position plus EPF and fixed deposits</CardDescription><CardAction><Sparkles className="size-5 text-emerald-600" /></CardAction></CardHeader>
+          <CardContent className="min-w-0"><p className="break-all font-mono text-2xl font-semibold tabular-nums text-emerald-600 dark:text-emerald-400 sm:text-3xl">{displayMoney(totalNetWorth)}</p><p className="mt-1 text-xs text-muted-foreground">Includes manually-updated EPF/FD balances</p></CardContent>
         </Card>
       </div>
 

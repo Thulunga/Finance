@@ -117,6 +117,69 @@ export type Database = {
         };
         Relationships: [];
       };
+      epf_balances: {
+        Row: {
+          balance: number;
+          created_at: string | null;
+          id: string;
+          note: string | null;
+          recorded_at: string;
+          user_id: string;
+        };
+        Insert: {
+          balance: number;
+          created_at?: string | null;
+          id?: string;
+          note?: string | null;
+          recorded_at?: string;
+          user_id: string;
+        };
+        Update: {
+          balance?: number;
+          created_at?: string | null;
+          id?: string;
+          note?: string | null;
+          recorded_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      fd_accounts: {
+        Row: {
+          amount: number;
+          bank_name: string;
+          created_at: string | null;
+          id: string;
+          interest_rate: number | null;
+          maturity_date: string | null;
+          note: string | null;
+          updated_at: string | null;
+          user_id: string;
+        };
+        Insert: {
+          amount: number;
+          bank_name: string;
+          created_at?: string | null;
+          id?: string;
+          interest_rate?: number | null;
+          maturity_date?: string | null;
+          note?: string | null;
+          updated_at?: string | null;
+          user_id: string;
+        };
+        Update: {
+          amount?: number;
+          bank_name?: string;
+          created_at?: string | null;
+          id?: string;
+          interest_rate?: number | null;
+          maturity_date?: string | null;
+          note?: string | null;
+          updated_at?: string | null;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
       budgets: {
         Row: {
           allocated_amount: number;
@@ -192,6 +255,8 @@ export type Database = {
           created_at: string | null;
           expense_id: string | null;
           friend_name: string;
+          friend_user_id: string | null;
+          group_id: string | null;
           id: string;
           is_settled: boolean;
           settled_date: string | null;
@@ -201,6 +266,8 @@ export type Database = {
           created_at?: string | null;
           expense_id?: string | null;
           friend_name: string;
+          friend_user_id?: string | null;
+          group_id?: string | null;
           id?: string;
           is_settled?: boolean;
           settled_date?: string | null;
@@ -210,6 +277,8 @@ export type Database = {
           created_at?: string | null;
           expense_id?: string | null;
           friend_name?: string;
+          friend_user_id?: string | null;
+          group_id?: string | null;
           id?: string;
           is_settled?: boolean;
           settled_date?: string | null;
@@ -224,9 +293,175 @@ export type Database = {
           },
         ];
       };
+      friendships: {
+        Row: {
+          created_at: string;
+          friend_id: string;
+          id: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          friend_id: string;
+          id?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          friend_id?: string;
+          id?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      expense_groups: {
+        Row: {
+          created_at: string;
+          created_by: string;
+          id: string;
+          name: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by: string;
+          id?: string;
+          name: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string;
+          id?: string;
+          name?: string;
+        };
+        Relationships: [];
+      };
+      expense_group_members: {
+        Row: {
+          group_id: string;
+          joined_at: string;
+          user_id: string;
+        };
+        Insert: {
+          group_id: string;
+          joined_at?: string;
+          user_id: string;
+        };
+        Update: {
+          group_id?: string;
+          joined_at?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      };
+      expense_group_invites: {
+        Row: {
+          created_at: string;
+          created_by: string;
+          expires_at: string | null;
+          group_id: string;
+          id: string;
+          revoked: boolean;
+          token: string;
+        };
+        Insert: {
+          created_at?: string;
+          created_by: string;
+          expires_at?: string | null;
+          group_id: string;
+          id?: string;
+          revoked?: boolean;
+          token: string;
+        };
+        Update: {
+          created_at?: string;
+          created_by?: string;
+          expires_at?: string | null;
+          group_id?: string;
+          id?: string;
+          revoked?: boolean;
+          token?: string;
+        };
+        Relationships: [];
+      };
+      split_settlement_history: {
+        Row: {
+          action: string;
+          actor_user_id: string;
+          created_at: string;
+          id: string;
+          split_id: string;
+        };
+        Insert: {
+          action: string;
+          actor_user_id: string;
+          created_at?: string;
+          id?: string;
+          split_id: string;
+        };
+        Update: {
+          action?: string;
+          actor_user_id?: string;
+          created_at?: string;
+          id?: string;
+          split_id?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      add_friend_by_code: {
+        Args: { target_code: string };
+        Returns: undefined;
+      };
+      create_expense_group: {
+        Args: { group_name: string };
+        Returns: Database["public"]["Tables"]["expense_groups"]["Row"];
+      };
+      add_group_member_by_code: {
+        Args: { target_group_id: string; target_code: string };
+        Returns: undefined;
+      };
+      create_group_invite: {
+        Args: { target_group_id: string; expires_in_hours?: number | null };
+        Returns: Database["public"]["Tables"]["expense_group_invites"]["Row"];
+      };
+      revoke_group_invite: {
+        Args: { target_invite_id: string };
+        Returns: undefined;
+      };
+      join_group_via_token: {
+        Args: { invite_token: string };
+        Returns: Database["public"]["Tables"]["expense_groups"]["Row"];
+      };
+      settle_split_as_friend: {
+        Args: { target_split_id: string; mark_settled: boolean };
+        Returns: Database["public"]["Tables"]["split_receivables"]["Row"];
+      };
+      list_my_friends: {
+        Args: Record<string, never>;
+        Returns: { user_id: string; user_code: string; avatar_path: string | null }[];
+      };
+      list_my_groups: {
+        Args: Record<string, never>;
+        Returns: {
+          group_id: string;
+          group_name: string;
+          member_count: number;
+          is_owner: boolean;
+          created_at: string;
+        }[];
+      };
+      list_group_members: {
+        Args: { target_group_id: string };
+        Returns: {
+          user_id: string;
+          user_code: string;
+          avatar_path: string | null;
+          joined_at: string;
+        }[];
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

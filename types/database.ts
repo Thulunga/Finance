@@ -407,6 +407,84 @@ export type Database = {
         };
         Relationships: [];
       };
+      trip_expenses: {
+        Row: {
+          id: string;
+          description: string;
+          total_amount: number;
+          paid_by: string;
+          expense_date: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          description: string;
+          total_amount: number;
+          paid_by: string;
+          expense_date?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          description?: string;
+          total_amount?: number;
+          paid_by?: string;
+          expense_date?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      trip_expense_splits: {
+        Row: {
+          id: string;
+          expense_id: string;
+          person: string;
+          amount: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          expense_id: string;
+          person: string;
+          amount: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          expense_id?: string;
+          person?: string;
+          amount?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      trip_settlements: {
+        Row: {
+          id: string;
+          from_person: string;
+          to_person: string;
+          amount: number;
+          settled_date: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          from_person: string;
+          to_person: string;
+          amount: number;
+          settled_date?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          from_person?: string;
+          to_person?: string;
+          amount?: number;
+          settled_date?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {

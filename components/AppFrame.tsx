@@ -15,7 +15,12 @@ type AppFrameProps = Readonly<{
 }>;
 
 function isAuthRoute(pathname: string) {
-  return pathname.startsWith("/login") || pathname.startsWith("/join");
+  const path = pathname.toLowerCase();
+  return (
+    path.startsWith("/login") ||
+    path.startsWith("/join") ||
+    path.startsWith("/tripspendings")
+  );
 }
 
 export function AppFrame({ user, children }: AppFrameProps) {

@@ -3,23 +3,13 @@
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/requireUser";
 
-type ExpenseSplitInput = {
-  friend_name: string;
-  amount_owed: number;
-  friend_user_id?: string | null;
-  group_id?: string | null;
-};
-
 type CreateExpenseInput = {
   date: string;
   description: string;
   total_amount: number;
   category: string;
-  is_shared: boolean;
-  my_share: number;
   is_credit_card: boolean;
   is_credit_card_payment: boolean;
-  splits?: ExpenseSplitInput[];
 };
 
 function getNextMonthStart(monthYear: string) {
@@ -50,24 +40,6 @@ export async function createExpense(input: CreateExpenseInput) {
     throw new Error("total_amount must be greater than 0");
   }
 
-  if (!Number.isFinite(input.my_share) || input.my_share < 0) {
-    throw new Error("my_share must be a positive number");
-  }
-
-  const splits = input.is_shared
-    ? (input.splits ?? []).filter(
-        (split) => split.friend_name.trim() && split.amount_owed > 0
-      )
-    : [];
-  const totalOwed = splits.reduce(
-    (total, split) => total + split.amount_owed,
-    0
-  );
-
-  if (totalOwed > input.total_amount) {
-    throw new Error("friend split amounts cannot exceed total_amount");
-  }
-
   const { supabase, user } = await requireUser();
 
   const { data: expense, error: expenseError } = await supabase
@@ -77,8 +49,8 @@ export async function createExpense(input: CreateExpenseInput) {
       description: input.description.trim(),
       total_amount: input.total_amount,
       category: input.category.trim(),
-      is_shared: input.is_shared,
-      my_share: input.my_share,
+      is_shared: false,
+      my_share: input.total_amount,
       is_credit_card: input.is_credit_card,
       is_credit_card_payment: input.is_credit_card_payment,
       user_id: user.id,
@@ -90,34 +62,9 @@ export async function createExpense(input: CreateExpenseInput) {
     throw new Error(expenseError.message);
   }
 
-  if (input.is_shared && splits.length > 0) {
-    const { data: savedSplits, error: splitError } = await supabase
-      .from("split_receivables")
-      .insert(
-        splits.map((split) => ({
-          expense_id: expense.id,
-          friend_name: split.friend_name.trim(),
-          amount_owed: split.amount_owed,
-          friend_user_id: split.friend_user_id ?? null,
-          group_id: split.group_id ?? null,
-        }))
-      )
-      .select(
-        "id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, friend_user_id, group_id"
-      );
-
-    if (splitError) {
-      throw new Error(splitError.message);
-    }
-
-    revalidatePath("/");
-
-    return { ...expense, split_receivables: savedSplits ?? [] };
-  }
-
   revalidatePath("/");
 
-  return { ...expense, split_receivables: [] };
+  return expense;
 }
 
 export async function deleteExpense(expenseId: string) {
@@ -148,7 +95,7 @@ export async function fetchMonthlyExpenses(monthYear: string) {
   const { data, error } = await supabase
     .from("expenses")
     .select(
-      "id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id, split_receivables(id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, friend_user_id, group_id)"
+      "id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id"
     )
     .eq("user_id", user.id)
     .gte("date", `${monthYear}-01`)
@@ -172,7 +119,7 @@ export async function fetchExpensesThroughMonth(monthYear: string) {
   const { data, error } = await supabase
     .from("expenses")
     .select(
-      "id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id, split_receivables(id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, friend_user_id, group_id)"
+      "id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id"
     )
     .eq("user_id", user.id)
     .lt("date", getNextMonthStart(monthYear))
@@ -203,7 +150,7 @@ export async function updateExpense(input: {
     .update({ date: input.date, description: input.description.trim(), category: input.category.trim(), total_amount: input.total_amount, my_share: input.total_amount, is_credit_card: input.is_credit_card, is_credit_card_payment: input.is_credit_card_payment })
     .eq("id", input.id)
     .eq("user_id", user.id)
-    .select("id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id, split_receivables(id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, friend_user_id, group_id)")
+    .select("id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id")
     .single();
   if (error) throw new Error(error.message);
   revalidatePath("/");

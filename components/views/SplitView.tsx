@@ -8,7 +8,7 @@ export function SplitView() {
     <div className="space-y-4 sm:space-y-6">
       <PageHeader
         title="Receivables"
-        description="Review and settle money friends owe you, or what you owe them."
+        description="Track and settle money others owe you."
         showMonth={false}
       />
       <SplitManager />

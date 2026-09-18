@@ -35,43 +35,23 @@ import {
   updateFdAccount,
 } from "@/app/actions/assetActions";
 import {
-  addFriendByCode,
-  addGroupMemberByCode,
-  createExpenseGroup,
-  fetchMyFriends,
-  fetchMyGroups,
-} from "@/app/actions/groupActions";
-import { settleReceivableAsFriend } from "@/app/actions/splitActions";
+  createReceivable,
+  deleteReceivable,
+  settleReceivable,
+} from "@/app/actions/receivableActions";
 import type { Tables } from "@/types/database";
 import type { IncomeLike, AllocationLike } from "@/lib/budgetCalculations";
 
 type BudgetRow = Tables<"budgets">;
-type SplitRow = Tables<"split_receivables">;
 type CategoryRow = Tables<"categories">;
 type EpfRow = Tables<"epf_balances">;
 type FdRow = Tables<"fd_accounts">;
 export type BalanceSection = "cash-flow" | "budget" | "transactions" | "receivables" | "assets";
 const BALANCE_DEFAULT_EVENT = "finance-balance-default-changed";
 
-export type ExpenseWithSplits = Tables<"expenses"> & {
-  split_receivables: SplitRow[];
-};
+export type ExpenseWithSplits = Tables<"expenses">;
 
-export type PendingReceivable = SplitRow & {
-  expense: Pick<Tables<"expenses">, "date" | "description" | "category"> | null;
-};
-
-export type Friend = { user_id: string; user_code: string; avatar_path: string | null };
-export type MyGroup = {
-  group_id: string;
-  group_name: string;
-  member_count: number;
-  is_owner: boolean;
-  created_at: string;
-};
-export type OwedByMeSplit = SplitRow & {
-  expenses: Pick<Tables<"expenses">, "date" | "description" | "category" | "user_id"> | null;
-};
+export type Receivable = Tables<"receivables">;
 
 type DashboardContextValue = {
   monthYear: string;
@@ -80,7 +60,7 @@ type DashboardContextValue = {
   budgets: BudgetRow[];
   expenses: ExpenseWithSplits[];
   cashExpenses: ExpenseWithSplits[];
-  receivables: PendingReceivable[];
+  receivables: Receivable[];
   categoryRows: CategoryRow[];
   categories: string[];
   addCategory: (name: string) => void;
@@ -90,7 +70,9 @@ type DashboardContextValue = {
   addExpense: (expense: ExpenseWithSplits) => void;
   removeExpense: (expenseId: string) => void;
   editExpense: (input: { id: string; date: string; description: string; category: string; total_amount: number; is_credit_card: boolean; is_credit_card_payment: boolean }) => void;
-  resolveSplit: (splitId: string, action: (id: string) => Promise<unknown>) => void;
+  addReceivable: (input: { person_name: string; amount: number; note?: string | null; receivable_date: string }) => void;
+  toggleReceivableSettled: (id: string, markSettled: boolean) => void;
+  removeReceivable: (id: string) => void;
   income: IncomeLike[];
   allocations: AllocationLike[];
   addIncome: (input: { date: string; description: string; amount: number }) => void;
@@ -123,13 +105,6 @@ type DashboardContextValue = {
   sectionVisibility: Record<BalanceSection, boolean>;
   toggleSectionVisibility: (section: BalanceSection) => void;
   setDefaultBalanceVisibility: (visible: boolean) => void;
-  friends: Friend[];
-  groups: MyGroup[];
-  owedByMe: OwedByMeSplit[];
-  addFriend: (userCode: string) => Promise<void>;
-  createGroup: (name: string) => Promise<void>;
-  addGroupMember: (groupId: string, userCode: string) => Promise<void>;
-  settleOwedSplit: (splitId: string, markSettled: boolean) => void;
 };
 
 const DashboardContext = createContext<DashboardContextValue | null>(null);
@@ -145,9 +120,6 @@ export function DashboardProvider({
   initialAllocations,
   initialEpfHistory,
   initialFdAccounts,
-  initialFriends,
-  initialGroups,
-  initialOwedByMe,
   userEmail,
   children,
 }: Readonly<{
@@ -155,15 +127,12 @@ export function DashboardProvider({
   initialBudgets: BudgetRow[];
   initialExpenses: ExpenseWithSplits[];
   initialCashExpenses: ExpenseWithSplits[];
-  initialReceivables: PendingReceivable[];
+  initialReceivables: Receivable[];
   initialCategories: CategoryRow[];
   initialIncome: IncomeLike[];
   initialAllocations: AllocationLike[];
   initialEpfHistory: EpfRow[];
   initialFdAccounts: FdRow[];
-  initialFriends: Friend[];
-  initialGroups: MyGroup[];
-  initialOwedByMe: OwedByMeSplit[];
   userEmail: string;
   children: React.ReactNode;
 }>) {
@@ -179,9 +148,6 @@ export function DashboardProvider({
   const [income, setIncome] = useState(initialIncome);
   const [allocations, setAllocations] = useState(initialAllocations);
   const [epfHistory, setEpfHistory] = useState(initialEpfHistory);
-  const [friends, setFriends] = useState(initialFriends);
-  const [groups, setGroups] = useState(initialGroups);
-  const [owedByMe, setOwedByMe] = useState(initialOwedByMe);
   const [fdAccounts, setFdAccounts] = useState(initialFdAccounts);
   const [loadedMonths, setLoadedMonths] = useState(() => new Set([initialMonth]));
   const storageKey = `finance-balance-default:${userEmail}`;
@@ -346,19 +312,6 @@ export function DashboardProvider({
       expense,
       ...current.filter((item) => item.id !== expense.id),
     ]);
-    setReceivables((current) => [
-      ...expense.split_receivables
-        .filter((split) => !split.is_settled)
-        .map((split) => ({
-          ...split,
-          expense: {
-            date: expense.date,
-            description: expense.description,
-            category: expense.category,
-          },
-        })),
-      ...current,
-    ]);
   }, []);
 
   const editExpense = useCallback((input: { id: string; date: string; description: string; category: string; total_amount: number; is_credit_card: boolean; is_credit_card_payment: boolean }) => {
@@ -380,12 +333,11 @@ export function DashboardProvider({
     });
   }, [expensesByMonth]);
 
-  /** Drops the row (and its receivables) locally first, restoring it only if the server rejects. */
+  /** Drops the row locally first, restoring it only if the server rejects. */
   const removeExpense = useCallback(
     (expenseId: string) => {
       const previousExpenses = expensesByMonth;
       const previousCashExpenses = cashExpenses;
-      const previousReceivables = receivables;
 
       setExpensesByMonth((current) =>
         Object.fromEntries(
@@ -395,9 +347,6 @@ export function DashboardProvider({
           ])
         )
       );
-      setReceivables((current) =>
-        current.filter((split) => split.expense_id !== expenseId)
-      );
       setCashExpenses((current) => current.filter((row) => row.id !== expenseId));
 
       startTransition(async () => {
@@ -406,26 +355,63 @@ export function DashboardProvider({
         } catch {
           setExpensesByMonth(previousExpenses);
           setCashExpenses(previousCashExpenses);
-          setReceivables(previousReceivables);
           toast.error("Could not delete that expense. It has been restored.");
         }
       });
     },
-    [cashExpenses, expensesByMonth, receivables]
+    [cashExpenses, expensesByMonth]
   );
 
-  const resolveSplit = useCallback(
-    (splitId: string, action: (id: string) => Promise<unknown>) => {
-      const previous = receivables;
-
-      setReceivables((current) => current.filter((split) => split.id !== splitId));
-
+  const addReceivable = useCallback(
+    (input: { person_name: string; amount: number; note?: string | null; receivable_date: string }) => {
       startTransition(async () => {
         try {
-          await action(splitId);
-        } catch {
+          const saved = await createReceivable(input);
+          setReceivables((current) => [saved, ...current]);
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Could not add receivable.");
+        }
+      });
+    },
+    []
+  );
+
+  const toggleReceivableSettled = useCallback(
+    (id: string, markSettled: boolean) => {
+      const previous = receivables;
+      setReceivables((current) =>
+        current.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                is_settled: markSettled,
+                settled_date: markSettled ? new Date().toISOString().slice(0, 10) : null,
+              }
+            : item
+        )
+      );
+      startTransition(async () => {
+        try {
+          await settleReceivable(id, markSettled);
+        } catch (error) {
           setReceivables(previous);
-          toast.error("Could not update that split. Please try again.");
+          toast.error(error instanceof Error ? error.message : "Could not update that receivable.");
+        }
+      });
+    },
+    [receivables]
+  );
+
+  const removeReceivable = useCallback(
+    (id: string) => {
+      const previous = receivables;
+      setReceivables((current) => current.filter((item) => item.id !== id));
+      startTransition(async () => {
+        try {
+          await deleteReceivable(id);
+        } catch (error) {
+          setReceivables(previous);
+          toast.error(error instanceof Error ? error.message : "Could not remove that receivable.");
         }
       });
     },
@@ -624,49 +610,6 @@ export function DashboardProvider({
     startTransition(async () => { try { await deleteFdAccount(id); } catch (error) { setFdAccounts(previous); toast.error(error instanceof Error ? error.message : "Could not delete FD account."); } });
   }, [fdAccounts]);
 
-  const addFriend = useCallback(async (userCode: string) => {
-    await addFriendByCode(userCode);
-    const nextFriends = await fetchMyFriends();
-    setFriends(nextFriends);
-  }, []);
-
-  const createGroup = useCallback(async (name: string) => {
-    await createExpenseGroup(name);
-    const nextGroups = await fetchMyGroups();
-    setGroups(nextGroups);
-  }, []);
-
-  const addGroupMember = useCallback(async (groupId: string, userCode: string) => {
-    await addGroupMemberByCode(groupId, userCode);
-    const [nextGroups, nextFriends] = await Promise.all([fetchMyGroups(), fetchMyFriends()]);
-    setGroups(nextGroups);
-    setFriends(nextFriends);
-  }, []);
-
-  const settleOwedSplit = useCallback(
-    (splitId: string, markSettled: boolean) => {
-      const previous = owedByMe;
-
-      setOwedByMe((current) =>
-        current.map((split) =>
-          split.id === splitId
-            ? { ...split, is_settled: markSettled, settled_date: markSettled ? new Date().toISOString().slice(0, 10) : null }
-            : split
-        )
-      );
-
-      startTransition(async () => {
-        try {
-          await settleReceivableAsFriend(splitId, markSettled);
-        } catch (error) {
-          setOwedByMe(previous);
-          toast.error(error instanceof Error ? error.message : "Could not update that split.");
-        }
-      });
-    },
-    [owedByMe]
-  );
-
   const categories = useMemo(
     () => categoryRows.map((category) => category.name),
     [categoryRows]
@@ -690,7 +633,9 @@ export function DashboardProvider({
       addExpense,
       removeExpense,
       editExpense,
-      resolveSplit,
+      addReceivable,
+      toggleReceivableSettled,
+      removeReceivable,
       income,
       allocations,
       addIncome,
@@ -711,13 +656,6 @@ export function DashboardProvider({
       sectionVisibility,
       toggleSectionVisibility,
       setDefaultBalanceVisibility,
-      friends,
-      groups,
-      owedByMe,
-      addFriend,
-      createGroup,
-      addGroupMember,
-      settleOwedSplit,
     }),
     [
       monthYear,
@@ -736,7 +674,9 @@ export function DashboardProvider({
       addExpense,
       removeExpense,
       editExpense,
-      resolveSplit,
+      addReceivable,
+      toggleReceivableSettled,
+      removeReceivable,
       income,
       allocations,
       addIncome,
@@ -757,13 +697,6 @@ export function DashboardProvider({
       sectionVisibility,
       toggleSectionVisibility,
       setDefaultBalanceVisibility,
-      friends,
-      groups,
-      owedByMe,
-      addFriend,
-      createGroup,
-      addGroupMember,
-      settleOwedSplit,
     ]
   );
 

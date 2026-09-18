@@ -24,7 +24,7 @@ export function ExpensesView() {
     <div className="space-y-4 sm:space-y-6">
       <PageHeader
         title="Expenses"
-        description="Record personal spending and split costs with friends or groups."
+        description="Record your personal spending."
         actions={
           <Dialog open={open} onOpenChange={setOpen}>
             <DialogTrigger render={<Button className="flex-1 sm:flex-none" type="button" />}>
@@ -34,7 +34,7 @@ export function ExpensesView() {
             <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
               <DialogHeader>
                 <DialogTitle>Add expense</DialogTitle>
-                <DialogDescription>Record a personal expense or split it with friends.</DialogDescription>
+                <DialogDescription>Record a personal expense.</DialogDescription>
               </DialogHeader>
               <ExpenseForm onCompleted={() => setOpen(false)} />
             </DialogContent>

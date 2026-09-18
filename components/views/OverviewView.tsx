@@ -16,7 +16,6 @@ import {
 import { PageHeader } from "@/components/PageHeader";
 import { SectionVisibilityToggle } from "@/components/SectionVisibilityToggle";
 import { useDashboard } from "@/components/DashboardProvider";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { calculateOverallKPIs } from "@/lib/budgetCalculations";
 import { cn } from "@/lib/utils";
@@ -33,8 +32,8 @@ const quickLinks = [
   { href: "/budgets", label: "Budgets", description: "Category limits", icon: Target },
   { href: "/assets", label: "Assets", description: "EPF and fixed deposits", icon: Landmark },
   { href: "/analytics", label: "Analytics", description: "Trends and pressure", icon: BarChart3 },
-  { href: "/groups", label: "Groups", description: "Shared expenses", icon: Users },
-  { href: "/split", label: "Receivables", description: "Who owes whom", icon: HandCoins },
+  { href: "/split-groups", label: "Split Groups", description: "Split expenses with anyone", icon: Users },
+  { href: "/split", label: "Receivables", description: "Who owes you money", icon: HandCoins },
 ];
 
 export function OverviewView() {
@@ -48,7 +47,6 @@ export function OverviewView() {
     epfHistory,
     fdAccounts,
     receivables,
-    groups,
     sectionVisibility,
   } = useDashboard();
 
@@ -58,7 +56,7 @@ export function OverviewView() {
   const totalFd = fdAccounts.reduce((sum, account) => sum + account.amount, 0);
   const pendingReceivables = receivables
     .filter((item) => !item.is_settled)
-    .reduce((total, item) => total + item.amount_owed, 0);
+    .reduce((total, item) => total + item.amount, 0);
   const netWorth = kpis.totalFinancialPosition + latestEpf + totalFd;
   const displayMoney = (value: number) => (show ? money.format(value) : "••••••");
 
@@ -94,12 +92,6 @@ export function OverviewView() {
       <section className="space-y-3">
         <div className="flex items-center justify-between px-1">
           <h2 className="text-lg font-semibold tracking-tight">Jump to</h2>
-          {groups.length > 0 ? (
-            <Badge variant="secondary" className="gap-1">
-              <Users className="size-3" aria-hidden="true" />
-              {groups.length} {groups.length === 1 ? "group" : "groups"}
-            </Badge>
-          ) : null}
         </div>
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {quickLinks.map((link) => {

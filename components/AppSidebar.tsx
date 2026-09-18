@@ -45,7 +45,7 @@ export const navSections: NavSection[] = [
   {
     heading: "Shared",
     items: [
-      { href: "/groups", label: "Groups", icon: Users },
+      { href: "/split-groups", label: "Split Groups", icon: Users },
       { href: "/split", label: "Receivables", icon: HandCoins },
     ],
   },

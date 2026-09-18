@@ -14,13 +14,9 @@ type AppFrameProps = Readonly<{
   children: React.ReactNode;
 }>;
 
-function isAuthRoute(pathname: string) {
+function isAlwaysStandalone(pathname: string) {
   const path = pathname.toLowerCase();
-  return (
-    path.startsWith("/login") ||
-    path.startsWith("/join") ||
-    path.startsWith("/tripspendings")
-  );
+  return path.startsWith("/login") || path.startsWith("/tripspendings");
 }
 
 export function AppFrame({ user, children }: AppFrameProps) {
@@ -28,7 +24,13 @@ export function AppFrame({ user, children }: AppFrameProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const closeMobile = () => setMobileOpen(false);
 
-  if (isAuthRoute(pathname)) {
+  // /split-groups is shareable with anonymous visitors, so it drops the app
+  // chrome only when there's no signed-in user; logged-in users keep the sidebar.
+  const path = pathname.toLowerCase();
+  const standalone =
+    isAlwaysStandalone(path) || (path.startsWith("/split-groups") && !user);
+
+  if (standalone) {
     return <div className="flex min-h-screen flex-col">{children}</div>;
   }
 

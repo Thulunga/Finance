@@ -1,19 +1,7 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { listTripExpenses, listTripSettlements } from "@/app/actions/tripActions";
-import { TripSplitApp } from "@/components/trip/TripSplitApp";
-
-export const metadata: Metadata = {
-  title: "Trip Spendings",
-  robots: { index: false, follow: false },
-};
-
-export const dynamic = "force-dynamic";
-
-export default async function TripSpendingsPage() {
-  const [expenses, settlements] = await Promise.all([
-    listTripExpenses(),
-    listTripSettlements(),
-  ]);
-  return <TripSplitApp initialExpenses={expenses} initialSettlements={settlements} />;
+// The hardcoded Uttarakhand trip page has been migrated into the generic
+// split-groups system (migration 015). This URL now redirects to that group.
+export default function TripSpendingsPage() {
+  redirect("/split-groups/uttarakhand");
 }

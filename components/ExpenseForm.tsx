@@ -1,7 +1,7 @@
 "use client";
 
-import { startTransition, useMemo, useState } from "react";
-import { Check, CircleHelp, CreditCard, LoaderCircle, Plus, ReceiptText, Trash2, Users, WalletCards } from "lucide-react";
+import { startTransition, useState } from "react";
+import { Check, CreditCard, LoaderCircle, ReceiptText, WalletCards } from "lucide-react";
 
 import { createExpense } from "@/app/actions/expenseActions";
 import { useDashboard } from "@/components/DashboardProvider";
@@ -16,21 +16,12 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
-  Popover,
-  PopoverContent,
-  PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
-  PopoverTrigger,
-} from "@/components/ui/popover";
-import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 
 const FALLBACK_CATEGORIES = [
   "Rent & Utilities",
@@ -39,16 +30,6 @@ const FALLBACK_CATEGORIES = [
   "Lifestyle & Dining",
   "Discretionary",
 ];
-
-type SplitMode = "equal" | "amount" | "percentage";
-
-type FriendSplit = {
-  id: string;
-  friend_name: string;
-  friend_user_id: string | null;
-  amount_owed: number;
-  percent: number;
-};
 
 function getToday() {
   return new Date().toISOString().slice(0, 10);
@@ -62,115 +43,10 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
-function createSplitRow(): FriendSplit {
-  return {
-    id: crypto.randomUUID(),
-    friend_name: "",
-    friend_user_id: null,
-    amount_owed: 0,
-    percent: 0,
-  };
-}
-
-function FriendPicker({
-  value,
-  disabled,
-  onSelect,
-}: Readonly<{
-  value: string;
-  disabled?: boolean;
-  onSelect: (name: string, userId: string | null) => void;
-}>) {
-  const { friends } = useDashboard();
-  const [open, setOpen] = useState(false);
-  const filtered = friends.filter((friend) =>
-    friend.user_code.toLowerCase().includes(value.trim().toLowerCase())
-  );
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger
-        render={
-          <Input
-            disabled={disabled}
-            placeholder="Friend name or user code"
-            value={value}
-            onChange={(event) => {
-              onSelect(event.target.value, null);
-              setOpen(true);
-            }}
-            onFocus={() => setOpen(true)}
-          />
-        }
-      />
-      {friends.length > 0 ? (
-        <PopoverContent align="start" className="w-64 p-1">
-          {filtered.length === 0 ? (
-            <p className="p-2 text-xs text-muted-foreground">No matching friends. You can still type a name.</p>
-          ) : (
-            <div className="max-h-48 overflow-y-auto">
-              {filtered.map((friend) => (
-                <button
-                  key={friend.user_id}
-                  type="button"
-                  className="flex w-full items-center gap-2 rounded-md p-2 text-left text-sm hover:bg-muted"
-                  onClick={() => {
-                    onSelect(friend.user_code, friend.user_id);
-                    setOpen(false);
-                  }}
-                >
-                  <Users className="size-3.5 text-muted-foreground" aria-hidden="true" />
-                  {friend.user_code}
-                </button>
-              ))}
-            </div>
-          )}
-        </PopoverContent>
-      ) : null}
-    </Popover>
-  );
-}
-
-function GroupPicker({
-  groups,
-  value,
-  disabled,
-  onSelect,
-}: Readonly<{
-  groups: { group_id: string; group_name: string }[];
-  value: string;
-  disabled?: boolean;
-  onSelect: (groupId: string) => void;
-}>) {
-  if (groups.length === 0) return null;
-
-  return (
-    <label className="block space-y-1.5 text-sm font-medium">
-      Group (optional)
-      <Select
-        disabled={disabled}
-        value={value}
-        onValueChange={(nextGroupId) => onSelect(nextGroupId ?? "")}
-      >
-        <SelectTrigger className="w-full sm:w-72">
-          <SelectValue placeholder="Choose a group" />
-        </SelectTrigger>
-        <SelectContent>
-          {groups.map((group) => (
-            <SelectItem key={group.group_id} value={group.group_id}>
-              {group.group_name}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-    </label>
-  );
-}
-
 export function ExpenseForm({
   onCompleted,
 }: Readonly<{ onCompleted?: () => void }>) {
-  const { categories, groups, addExpense } = useDashboard();
+  const { categories, addExpense } = useDashboard();
   const categoryOptions = categories.length > 0 ? categories : FALLBACK_CATEGORIES;
   const [date, setDate] = useState(getToday());
   const [description, setDescription] = useState("");
@@ -178,70 +54,11 @@ export function ExpenseForm({
   const [totalAmount, setTotalAmount] = useState(0);
   const [isCreditCard, setIsCreditCard] = useState(false);
   const [isCreditCardPayment, setIsCreditCardPayment] = useState(false);
-  const [isShared, setIsShared] = useState(false);
-  const [splitMode, setSplitMode] = useState<SplitMode>("equal");
-  const [groupId, setGroupId] = useState("");
-  const [splits, setSplits] = useState<FriendSplit[]>([createSplitRow()]);
   const [isCommitting, setIsCommitting] = useState(false);
   const [status, setStatus] = useState<"idle" | "saved" | "error">("idle");
 
-  /** Each friend's effective owed amount, derived from the active split method. */
-  const computedSplits = useMemo(() => {
-    if (!isShared) {
-      return [] as { id: string; friend_name: string; friend_user_id: string | null; amount: number }[];
-    }
-
-    const count = splits.length;
-
-    return splits.map((split) => {
-      let amount = 0;
-      if (splitMode === "equal") {
-        amount = count > 0 ? Math.floor((totalAmount * 100) / (count + 1)) / 100 : 0;
-      } else if (splitMode === "percentage") {
-        amount = Math.round(totalAmount * (split.percent || 0)) / 100;
-      } else {
-        amount = split.amount_owed || 0;
-      }
-
-      return {
-        id: split.id,
-        friend_name: split.friend_name,
-        friend_user_id: split.friend_user_id,
-        amount,
-      };
-    });
-  }, [isShared, splits, splitMode, totalAmount]);
-
-  const friendTotal = useMemo(
-    () => computedSplits.reduce((total, split) => total + split.amount, 0),
-    [computedSplits]
-  );
-  const percentTotal = useMemo(
-    () => splits.reduce((total, split) => total + (split.percent || 0), 0),
-    [splits]
-  );
-  const myShare = Math.max(totalAmount - (isShared ? friendTotal : 0), 0);
-  const splitExceedsTotal = isShared && friendTotal > totalAmount + 0.001;
-  const percentExceeds = isShared && splitMode === "percentage" && percentTotal > 100.001;
-  const hasIncompleteRow = isShared && splits.some((split) => !split.friend_name.trim());
   const canSubmit =
-    Boolean(date && description.trim() && category && totalAmount > 0) &&
-    (!isShared ||
-      (splits.length > 0 &&
-        !hasIncompleteRow &&
-        !splitExceedsTotal &&
-        !percentExceeds &&
-        friendTotal > 0)) &&
-    !isCommitting;
-
-  function updateSplit(id: string, nextSplit: Partial<FriendSplit>) {
-    setStatus("idle");
-    setSplits((current) =>
-      current.map((split) =>
-        split.id === id ? { ...split, ...nextSplit } : split
-      )
-    );
-  }
+    Boolean(date && description.trim() && category && totalAmount > 0) && !isCommitting;
 
   function resetForm() {
     setDate(getToday());
@@ -250,16 +67,10 @@ export function ExpenseForm({
     setTotalAmount(0);
     setIsCreditCard(false);
     setIsCreditCardPayment(false);
-    setIsShared(false);
-    setSplitMode("equal");
-    setGroupId("");
-    setSplits([createSplitRow()]);
   }
 
   function handleSubmit() {
-    if (!canSubmit) {
-      return;
-    }
+    if (!canSubmit) return;
 
     setIsCommitting(true);
     setStatus("idle");
@@ -273,21 +84,9 @@ export function ExpenseForm({
           is_credit_card: isCreditCard || isCreditCardPayment,
           is_credit_card_payment: isCreditCardPayment,
           category,
-          is_shared: isShared,
-          my_share: isShared ? myShare : totalAmount,
-          splits: isShared
-            ? computedSplits
-                .filter((split) => split.friend_name.trim() && split.amount > 0)
-                .map((split) => ({
-                  friend_name: split.friend_name,
-                  amount_owed: split.amount,
-                  friend_user_id: split.friend_user_id,
-                  group_id: groupId || null,
-                }))
-            : undefined,
         });
 
-        addExpense({ ...savedExpense, split_receivables: savedExpense.split_receivables });
+        addExpense(savedExpense);
         resetForm();
         setStatus("saved");
         onCompleted?.();
@@ -313,25 +112,8 @@ export function ExpenseForm({
             ) : null}
             {status === "error" ? <Badge variant="destructive">Not saved</Badge> : null}
           </div>
-          <CardDescription>
-            Add personal expenses and calculate friend splits before saving.
-          </CardDescription>
+          <CardDescription>Record a personal expense.</CardDescription>
         </div>
-
-        <Popover>
-          <PopoverTrigger render={<Button type="button" variant="outline" />}>
-            <CircleHelp className="size-4" aria-hidden="true" />
-            Split rules
-          </PopoverTrigger>
-          <PopoverContent align="end">
-            <PopoverHeader>
-              <PopoverTitle>Net share</PopoverTitle>
-              <PopoverDescription>
-                Your share is total amount minus pending friend receivables.
-              </PopoverDescription>
-            </PopoverHeader>
-          </PopoverContent>
-        </Popover>
       </CardHeader>
 
       <CardContent className="space-y-4">
@@ -403,208 +185,53 @@ export function ExpenseForm({
         </div>
 
         <div className="rounded-lg border bg-muted/30 p-3">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-medium">Split with Friends?</p>
-              <p className="text-xs text-muted-foreground">
-                Toggle on to track receivables against this expense.
-              </p>
-            </div>
-            <Button
-              disabled={isCommitting}
-              type="button"
-              variant={isShared ? "default" : "outline"}
-              onClick={() => {
-                setStatus("idle");
-                setIsShared((current) => !current);
-              }}
-            >
-              {isShared ? "Split on" : "Split off"}
-            </Button>
-          </div>
-
-          {isShared ? (
-            <div className="mt-4 space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-medium text-muted-foreground">Split method</span>
-                <div className="inline-flex rounded-lg border p-0.5">
-                  {(["equal", "amount", "percentage"] as const).map((mode) => (
-                    <button
-                      key={mode}
-                      type="button"
-                      disabled={isCommitting}
-                      onClick={() => {
-                        setStatus("idle");
-                        setSplitMode(mode);
-                      }}
-                      className={cn(
-                        "rounded-md px-3 py-1 text-xs font-medium transition-colors",
-                        splitMode === mode
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {mode === "amount" ? "By amount" : mode === "percentage" ? "By %" : "Equally"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <GroupPicker
-                disabled={isCommitting}
-                groups={groups}
-                value={groupId}
-                onSelect={(nextGroupId) => {
-                  setStatus("idle");
-                  setGroupId(nextGroupId);
-                }}
-              />
-
-              <div className="grid gap-2">
-                {splits.map((split, index) => {
-                  const amount = computedSplits[index]?.amount ?? 0;
-
-                  return (
-                    <div
-                      key={split.id}
-                      className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_9rem_auto] sm:items-center"
-                    >
-                      <FriendPicker
-                        disabled={isCommitting}
-                        value={split.friend_name}
-                        onSelect={(name, userId) =>
-                          updateSplit(split.id, { friend_name: name, friend_user_id: userId })
-                        }
-                      />
-                      {splitMode === "equal" ? (
-                        <div className="flex h-9 items-center justify-end rounded-lg border bg-muted/40 px-3 font-mono text-sm tabular-nums text-muted-foreground sm:h-8">
-                          {formatCurrency(amount)}
-                        </div>
-                      ) : splitMode === "percentage" ? (
-                        <div className="flex items-center gap-1">
-                          <Input
-                            className="font-mono tabular-nums"
-                            disabled={isCommitting}
-                            min="0"
-                            max="100"
-                            step="0.01"
-                            type="number"
-                            value={split.percent || ""}
-                            onChange={(event) =>
-                              updateSplit(split.id, { percent: Number(event.target.value || 0) })
-                            }
-                          />
-                          <span className="text-xs text-muted-foreground">% = {formatCurrency(amount)}</span>
-                        </div>
-                      ) : (
-                        <Input
-                          className="font-mono tabular-nums"
-                          disabled={isCommitting}
-                          min="0"
-                          step="0.01"
-                          type="number"
-                          value={split.amount_owed || ""}
-                          onChange={(event) =>
-                            updateSplit(split.id, {
-                              amount_owed: Number(event.target.value || 0),
-                            })
-                          }
-                        />
-                      )}
-                      <Button
-                        disabled={isCommitting || splits.length === 1}
-                        size="icon"
-                        type="button"
-                        variant="ghost"
-                        onClick={() =>
-                          setSplits((current) =>
-                            current.filter((item) => item.id !== split.id)
-                          )
-                        }
-                      >
-                        <Trash2 className="size-4" aria-hidden="true" />
-                        <span className="sr-only">Remove friend split</span>
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <Button
-                  disabled={isCommitting}
-                  type="button"
-                  variant="outline"
-                  onClick={() => setSplits((current) => [...current, createSplitRow()])}
-                >
-                  <Plus className="size-4" aria-hidden="true" />
-                  Add friend
-                </Button>
-                <div className="flex flex-wrap items-center gap-2">
-                  {splitMode === "percentage" ? (
-                    <Badge variant={percentExceeds ? "destructive" : "outline"} className="font-mono tabular-nums">
-                      {percentTotal.toFixed(2)}% of total
-                    </Badge>
-                  ) : null}
-                  {splitExceedsTotal ? (
-                    <Badge variant="destructive">Friend amounts exceed total</Badge>
-                  ) : (
-                    <Badge variant="outline" className="font-mono tabular-nums">
-                      Friends owe {formatCurrency(friendTotal)}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between rounded-lg border bg-background/60 p-3">
-                <span className="text-sm font-medium">My net share</span>
-                <span className="font-mono text-lg font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
-                  {formatCurrency(myShare)}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <p className="mt-4 font-mono text-xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
-              My Net Share: {formatCurrency(totalAmount)}
-            </p>
-          )}
+          <p className="font-mono text-xl font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+            Amount: {formatCurrency(totalAmount)}
+          </p>
         </div>
 
         <div className="grid gap-2 sm:grid-cols-2">
-        <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm">
-          <input
-            checked={isCreditCard}
-            disabled={isCreditCardPayment}
-            className="mt-0.5 size-4 accent-emerald-600"
-            type="checkbox"
-            onChange={(event) => setIsCreditCard(event.target.checked)}
-          />
-          <span>
-            <span className="flex items-center gap-1.5 font-medium"><CreditCard className="size-4" aria-hidden="true" />Paid by credit card</span>
-            <span className="mt-1 block text-xs text-muted-foreground">Counts toward the budget, but does not reduce liquid cash.</span>
-          </span>
-        </label>
-        <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm">
-          <input
-            checked={isCreditCardPayment}
-            className="mt-0.5 size-4 accent-emerald-600"
-            type="checkbox"
-            onChange={(event) => {
-              setIsCreditCardPayment(event.target.checked);
-              if (event.target.checked) setIsCreditCard(false);
-            }}
-          />
-          <span>
-            <span className="flex items-center gap-1.5 font-medium"><WalletCards className="size-4" aria-hidden="true" />Credit card bill payment</span>
-            <span className="mt-1 block text-xs text-muted-foreground">Deducts liquid cash and reduces your card due.</span>
-          </span>
-        </label>
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm">
+            <input
+              checked={isCreditCard}
+              disabled={isCreditCardPayment}
+              className="mt-0.5 size-4 accent-emerald-600"
+              type="checkbox"
+              onChange={(event) => setIsCreditCard(event.target.checked)}
+            />
+            <span>
+              <span className="flex items-center gap-1.5 font-medium">
+                <CreditCard className="size-4" aria-hidden="true" />
+                Paid by credit card
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Counts toward the budget, but does not reduce liquid cash.
+              </span>
+            </span>
+          </label>
+          <label className="flex cursor-pointer items-start gap-3 rounded-lg border p-3 text-sm">
+            <input
+              checked={isCreditCardPayment}
+              className="mt-0.5 size-4 accent-emerald-600"
+              type="checkbox"
+              onChange={(event) => {
+                setIsCreditCardPayment(event.target.checked);
+                if (event.target.checked) setIsCreditCard(false);
+              }}
+            />
+            <span>
+              <span className="flex items-center gap-1.5 font-medium">
+                <WalletCards className="size-4" aria-hidden="true" />
+                Credit card bill payment
+              </span>
+              <span className="mt-1 block text-xs text-muted-foreground">
+                Deducts liquid cash and reduces your card due.
+              </span>
+            </span>
+          </label>
         </div>
 
-        <Button className="w-full" disabled={!canSubmit}
-          type="button"
-          onClick={handleSubmit}
-        >
+        <Button className="w-full" disabled={!canSubmit} type="button" onClick={handleSubmit}>
           {isCommitting ? (
             <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
           ) : (

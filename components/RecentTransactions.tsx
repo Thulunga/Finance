@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { EditExpenseDialog } from "@/components/EditExpenseDialog";
-import { CreditCard, Eye, EyeOff, ListFilter, Pencil, ReceiptText, Trash2, Users } from "lucide-react";
+import { CreditCard, Eye, EyeOff, ListFilter, Pencil, ReceiptText, Trash2 } from "lucide-react";
 
 import { useDashboard, type ExpenseWithSplits } from "@/components/DashboardProvider";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -43,42 +43,6 @@ function formatCurrency(value: number) {
 
 function formatDate(date: string) {
   return dateFormatter.format(new Date(`${date}T00:00:00Z`));
-}
-
-function SplitStatus({ expense }: Readonly<{ expense: ExpenseWithSplits }>) {
-  const splits = expense.split_receivables;
-
-  if (splits.length === 0) {
-    return <span className="text-xs text-muted-foreground">Personal</span>;
-  }
-
-  const friendCount = new Set(splits.map((split) => split.friend_name)).size;
-  const pending = splits
-    .filter((split) => !split.is_settled)
-    .reduce((total, split) => total + split.amount_owed, 0);
-
-  if (pending === 0) {
-    return (
-      <Badge
-        variant="outline"
-        className="border-emerald-600/30 text-emerald-700 dark:text-emerald-300"
-      >
-        <Users aria-hidden="true" />
-        Settled
-      </Badge>
-    );
-  }
-
-  return (
-    <Badge
-      variant="outline"
-      className="border-amber-600/30 font-mono text-amber-700 tabular-nums dark:text-amber-300"
-    >
-      <Users aria-hidden="true" />
-      Split with {friendCount} {friendCount === 1 ? "friend" : "friends"} (
-      {formatCurrency(pending)} pending)
-    </Badge>
-  );
 }
 
 export function RecentTransactions() {
@@ -147,7 +111,7 @@ export function RecentTransactions() {
               <div key={expense.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-lg border bg-background/70 p-2.5 transition-colors hover:bg-muted/30 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-3 sm:p-3">
                 <div className="flex min-w-0 items-start gap-3">
                   <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground sm:size-9"><ReceiptText className="size-3.5 sm:size-4" aria-hidden="true" /></div>
-                  <div className="min-w-0 space-y-0.5"><p className="truncate text-sm font-semibold">{expense.description}</p><p className="truncate text-[11px] text-muted-foreground">{formatDate(expense.date)} · {expense.category}</p><div className="flex flex-wrap gap-1">{expense.is_credit_card_payment ? <Badge className="h-5" variant="outline"><CreditCard className="size-3" aria-hidden="true" /> Card payment</Badge> : expense.is_credit_card ? <Badge className="h-5" variant="outline"><CreditCard className="size-3" aria-hidden="true" /> Card</Badge> : null}<SplitStatus expense={expense} /></div></div>
+                  <div className="min-w-0 space-y-0.5"><p className="truncate text-sm font-semibold">{expense.description}</p><p className="truncate text-[11px] text-muted-foreground">{formatDate(expense.date)} · {expense.category}</p><div className="flex flex-wrap gap-1">{expense.is_credit_card_payment ? <Badge className="h-5" variant="outline"><CreditCard className="size-3" aria-hidden="true" /> Card payment</Badge> : expense.is_credit_card ? <Badge className="h-5" variant="outline"><CreditCard className="size-3" aria-hidden="true" /> Card</Badge> : null}</div></div>
                 </div>
                 <div className="flex items-center gap-1 sm:block sm:text-right"><p className="hidden text-xs text-muted-foreground sm:block">Net share</p><p className="font-mono text-sm font-semibold tabular-nums sm:text-base">{displayMoney(expense.my_share)}</p><div className="flex justify-end gap-0.5 sm:gap-1"><Button aria-label={`Edit ${expense.description}`} size="icon-sm" type="button" variant="ghost" onClick={() => setEditTarget(expense)}><Pencil className="size-3.5 sm:size-4" aria-hidden="true" /><span className="sr-only">Edit {expense.description}</span></Button><Button aria-label={`Delete ${expense.description}`} className="hover:text-destructive" size="icon-sm" type="button" variant="ghost" onClick={() => setDeleteTarget(expense)}><Trash2 className="size-3.5 sm:size-4" aria-hidden="true" /><span className="sr-only">Delete {expense.description}</span></Button></div></div>
               </div>
@@ -158,7 +122,7 @@ export function RecentTransactions() {
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="Delete this expense?"
-        description={deleteTarget ? `This will permanently remove ${deleteTarget.description} and its split records.` : ""}
+        description={deleteTarget ? `This will permanently remove ${deleteTarget.description}.` : ""}
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => {
           if (deleteTarget) removeExpense(deleteTarget.id);

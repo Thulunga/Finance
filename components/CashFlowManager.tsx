@@ -41,7 +41,7 @@ export function CashFlowManager() {
   const totalNetWorth = kpis.totalFinancialPosition + latestEpfBalance + totalFdAmount;
   const pendingReceivablesTotal = receivables
     .filter((item) => !item.is_settled)
-    .reduce((total, item) => total + item.amount_owed, 0);
+    .reduce((total, item) => total + item.amount, 0);
   const visibleIncome = income.filter((entry) => entry.month_year === monthYear);
   const visibleAllocations = allocations.filter((allocation) => allocation.month_year === monthYear);
   const displayMoney = (value: number) => (showBalances ? money.format(value) : "••••••");

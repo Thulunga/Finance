@@ -4,14 +4,11 @@ import { createClient } from "@/utils/supabase/server";
 import type { Tables } from "@/types/database";
 import type {
   ExpenseWithSplits,
-  PendingReceivable,
-  Friend,
-  MyGroup,
-  OwedByMeSplit,
+  Receivable,
 } from "@/components/DashboardProvider";
 
 const EXPENSE_COLUMNS =
-  "id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id, split_receivables(id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, friend_user_id, group_id)";
+  "id, date, description, total_amount, category, is_shared, is_credit_card, is_credit_card_payment, my_share, created_at, user_id";
 
 const DEFAULT_CATEGORIES = [
   "Rent & Utilities",
@@ -79,15 +76,12 @@ export type DashboardInitialData = {
   initialBudgets: Tables<"budgets">[];
   initialExpenses: ExpenseWithSplits[];
   initialCashExpenses: ExpenseWithSplits[];
-  initialReceivables: PendingReceivable[];
+  initialReceivables: Receivable[];
   initialCategories: Tables<"categories">[];
   initialIncome: Tables<"income_entries">[];
   initialAllocations: Tables<"cash_allocations">[];
   initialEpfHistory: Tables<"epf_balances">[];
   initialFdAccounts: Tables<"fd_accounts">[];
-  initialFriends: Friend[];
-  initialGroups: MyGroup[];
-  initialOwedByMe: OwedByMeSplit[];
 } | null;
 
 /** Shared by every page that mounts DashboardProvider, so data-loading stays identical across routes. */
@@ -101,7 +95,7 @@ export async function loadDashboardData(): Promise<DashboardInitialData> {
     return null;
   }
 
-  const [budgetsResult, expensesResult, cashExpensesResult, splitsResult, categories, incomeResult, allocationsResult, epfResult, fdResult, friendsResult, groupsResult, owedByMeResult] = await Promise.all([
+  const [budgetsResult, expensesResult, cashExpensesResult, receivablesResult, categories, incomeResult, allocationsResult, epfResult, fdResult] = await Promise.all([
     supabase
       .from("budgets")
       .select("id, category, allocated_amount, month_year, created_at, user_id")
@@ -119,11 +113,11 @@ export async function loadDashboardData(): Promise<DashboardInitialData> {
       .lt("date", getNextMonthStart(initialMonth))
       .order("date", { ascending: false }),
     supabase
-      .from("split_receivables")
+      .from("receivables")
       .select(
-        "id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, friend_user_id, group_id, expenses(date, description, category)"
+        "id, user_id, person_name, amount, note, receivable_date, is_settled, settled_date, created_at"
       )
-      .eq("is_settled", false)
+      .eq("user_id", userData.user.id)
       .order("created_at", { ascending: false }),
     loadCategories(supabase, userData.user.id),
     supabase
@@ -149,33 +143,18 @@ export async function loadDashboardData(): Promise<DashboardInitialData> {
       .select("id, user_id, bank_name, amount, interest_rate, maturity_date, note, created_at, updated_at")
       .eq("user_id", userData.user.id)
       .order("created_at", { ascending: false }),
-    supabase.rpc("list_my_friends"),
-    supabase.rpc("list_my_groups"),
-    supabase
-      .from("split_receivables")
-      .select(
-        "id, expense_id, friend_name, amount_owed, is_settled, settled_date, created_at, friend_user_id, group_id, expenses(date, description, category, user_id)"
-      )
-      .eq("friend_user_id", userData.user.id)
-      .order("created_at", { ascending: false }),
   ]);
 
   assertNoError("budgets", budgetsResult.error);
   assertNoError("expenses (current month)", expensesResult.error);
   assertNoError("expenses (history)", cashExpensesResult.error);
-  assertNoError("split_receivables (owed to me)", splitsResult.error);
+  assertNoError("receivables", receivablesResult.error);
   assertNoError("income_entries", incomeResult.error);
   assertNoError("cash_allocations", allocationsResult.error);
   assertNoError("epf_balances", epfResult.error);
   assertNoError("fd_accounts", fdResult.error);
-  assertNoError("list_my_friends", friendsResult.error);
-  assertNoError("list_my_groups", groupsResult.error);
-  assertNoError("split_receivables (owed by me)", owedByMeResult.error);
 
   const initialExpenses: ExpenseWithSplits[] = expensesResult.data ?? [];
-  const initialReceivables: PendingReceivable[] = (splitsResult.data ?? []).map(
-    ({ expenses, ...split }) => ({ ...split, expense: expenses ?? null })
-  );
 
   return {
     userEmail: userData.user.email ?? userData.user.id,
@@ -183,15 +162,12 @@ export async function loadDashboardData(): Promise<DashboardInitialData> {
     initialBudgets: budgetsResult.data ?? [],
     initialExpenses,
     initialCashExpenses: cashExpensesResult.data ?? [],
-    initialReceivables,
+    initialReceivables: receivablesResult.data ?? [],
     initialCategories: categories,
     initialIncome: incomeResult.data ?? [],
     initialAllocations: allocationsResult.data ?? [],
     initialEpfHistory: epfResult.data ?? [],
     initialFdAccounts: fdResult.data ?? [],
-    initialFriends: friendsResult.data ?? [],
-    initialGroups: groupsResult.data ?? [],
-    initialOwedByMe: owedByMeResult.data ?? [],
   };
 }
 

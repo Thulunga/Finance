@@ -180,6 +180,42 @@ export type Database = {
         };
         Relationships: [];
       };
+      receivables: {
+        Row: {
+          id: string;
+          user_id: string;
+          person_name: string;
+          amount: number;
+          note: string | null;
+          receivable_date: string;
+          is_settled: boolean;
+          settled_date: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          user_id: string;
+          person_name: string;
+          amount: number;
+          note?: string | null;
+          receivable_date?: string;
+          is_settled?: boolean;
+          settled_date?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          user_id?: string;
+          person_name?: string;
+          amount?: number;
+          note?: string | null;
+          receivable_date?: string;
+          is_settled?: boolean;
+          settled_date?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
       budgets: {
         Row: {
           allocated_amount: number;
@@ -485,6 +521,147 @@ export type Database = {
         };
         Relationships: [];
       };
+      split_groups: {
+        Row: {
+          id: string;
+          slug: string;
+          name: string;
+          currency: string;
+          passcode_hash: string | null;
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          slug: string;
+          name: string;
+          currency?: string;
+          passcode_hash?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          slug?: string;
+          name?: string;
+          currency?: string;
+          passcode_hash?: string | null;
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      split_group_members: {
+        Row: {
+          id: string;
+          group_id: string;
+          name: string;
+          friend_user_id: string | null;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          group_id: string;
+          name: string;
+          friend_user_id?: string | null;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          group_id?: string;
+          name?: string;
+          friend_user_id?: string | null;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      split_group_expenses: {
+        Row: {
+          id: string;
+          group_id: string;
+          description: string;
+          total_amount: number;
+          paid_by: string;
+          expense_date: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          group_id: string;
+          description: string;
+          total_amount: number;
+          paid_by: string;
+          expense_date?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          group_id?: string;
+          description?: string;
+          total_amount?: number;
+          paid_by?: string;
+          expense_date?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      split_group_expense_splits: {
+        Row: {
+          id: string;
+          expense_id: string;
+          person: string;
+          amount: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          expense_id: string;
+          person: string;
+          amount: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          expense_id?: string;
+          person?: string;
+          amount?: number;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
+      split_group_settlements: {
+        Row: {
+          id: string;
+          group_id: string;
+          from_person: string;
+          to_person: string;
+          amount: number;
+          settled_date: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          group_id: string;
+          from_person: string;
+          to_person: string;
+          amount: number;
+          settled_date?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          group_id?: string;
+          from_person?: string;
+          to_person?: string;
+          amount?: number;
+          settled_date?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: Record<string, never>;
     Functions: {
@@ -556,6 +733,62 @@ export type Database = {
           my_share: number;
           owner_id: string | null;
         }[];
+      };
+      create_split_group: {
+        Args: {
+          p_name: string;
+          p_currency: string;
+          p_passcode: string | null;
+          p_members: string[];
+        };
+        Returns: string;
+      };
+      split_group_meta: {
+        Args: { p_slug: string };
+        Returns: { name: string; currency: string; has_passcode: boolean }[];
+      };
+      get_split_group: {
+        Args: { p_slug: string; p_passcode: string | null };
+        Returns: Json;
+      };
+      add_split_group_member: {
+        Args: { p_slug: string; p_passcode: string | null; p_name: string };
+        Returns: undefined;
+      };
+      remove_split_group_member: {
+        Args: { p_slug: string; p_passcode: string | null; p_member_id: string };
+        Returns: undefined;
+      };
+      add_split_group_expense: {
+        Args: {
+          p_slug: string;
+          p_passcode: string | null;
+          p_description: string;
+          p_total: number;
+          p_paid_by: string;
+          p_date: string;
+          p_splits: Json;
+        };
+        Returns: string;
+      };
+      delete_split_group_expense: {
+        Args: { p_slug: string; p_passcode: string | null; p_expense_id: string };
+        Returns: undefined;
+      };
+      add_split_group_settlement: {
+        Args: {
+          p_slug: string;
+          p_passcode: string | null;
+          p_from: string;
+          p_to: string;
+          p_amount: number;
+          p_date: string;
+        };
+        Returns: undefined;
+      };
+      delete_split_group_settlement: {
+        Args: { p_slug: string; p_passcode: string | null; p_settlement_id: string };
+        Returns: undefined;
       };
     };
     Enums: Record<string, never>;

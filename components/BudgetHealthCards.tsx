@@ -145,7 +145,7 @@ export function BudgetHealthCards() {
         <Card>
           <CardHeader>
             <CardTitle>Total Net Spent</CardTitle>
-            <CardDescription>Your share only, friends excluded</CardDescription>
+            <CardDescription>Spending against your budgets</CardDescription>
             <CardAction>
               <TrendingDown
                 className="size-5 text-amber-600 dark:text-amber-400"
